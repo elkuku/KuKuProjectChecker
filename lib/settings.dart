@@ -11,7 +11,7 @@ class Settings {
 
       return jsonDecode(contents);
     } catch (e) {
-      print(e);
+      //print(e);
       return [];
     }
   }
