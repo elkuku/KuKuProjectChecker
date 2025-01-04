@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-import 'site_info.dart';
-import 'settings.dart';
+import 'support/site_info.dart';
+import 'support/settings.dart';
+import 'screens/settings_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -44,7 +45,12 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
 
+    loadInfos();
+  }
+
+  void loadInfos() {
     var settings = Settings();
+    siteInfos = [];
 
     settings.readSettings().then((sites) {
       for (var site in sites) {
@@ -78,11 +84,21 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext ctx) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(ctx, SettingsScreen()).then((value) {
+                loadInfos();
+              });
+            },
+            icon: Icon(Icons.settings),
+          ),
+        ],
       ),
       body: ListView(
         children: <Widget>[
@@ -90,7 +106,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ListTile(
               title: Text(siteInfo.url),
               leading: TextButton(
-                onPressed: (){
+                onPressed: () {
                   _launchUrl(siteInfo.url);
                 },
                 child: Text('Open'),
@@ -102,7 +118,8 @@ class _MyHomePageState extends State<MyHomePage> {
                     return Text(
                         'PHP: ${snapshot.data!.phpVersion} - SF: ${snapshot.data!.sfVersion}');
                   } else if (snapshot.hasError) {
-                    return Text('${snapshot.error}');
+                    //print(snapshot.error);
+                    return Text('Error');
                   }
 
                   return const CircularProgressIndicator();
