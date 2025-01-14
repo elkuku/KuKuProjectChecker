@@ -45,7 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  ListTile getListTile(String text) {
+  ListTile _getListTile(String text) {
     TextEditingController controller = TextEditingController()..text = text;
 
     controllers.add(controller);
@@ -56,11 +56,28 @@ class _SettingsPageState extends State<SettingsPage> {
         onChanged: (text) => {},
       ),
       trailing: TextButton(
-          onPressed: () {
-            controller.text = '';
-          },
-          child: Text('X')),
+        onPressed: () => controller.text = '',
+        child: Text('X'),
+      ),
     );
+  }
+
+  void _writeSettings() {
+    List<String> values = [];
+    for (var controller in controllers) {
+      if (controller.text != '') {
+        values.add(controller.text);
+      }
+    }
+    settings.writeSettings(values);
+    Navigator.of(context).pop();
+  }
+
+  void _addSite() {
+    setState(() {
+      sites.add('https://');
+      controllers = [];
+    });
   }
 
   @override
@@ -70,31 +87,17 @@ class _SettingsPageState extends State<SettingsPage> {
         title: Text('Settings'),
         actions: [
           IconButton(
-            onPressed: () {
-              setState(() {
-                sites.add('https://');
-                controllers = [];
-              });
-            },
+            onPressed: () => _addSite(),
             icon: Icon(Icons.add),
           ),
         ],
       ),
       body: ListView(
         children: <Widget>[
-          for (var site in sites) getListTile(site),
+          for (var site in sites) _getListTile(site),
           ListTile(
             title: TextButton(
-              onPressed: () {
-                List<String> values = [];
-                for (var controller in controllers) {
-                  if (controller.text != '') {
-                    values.add(controller.text);
-                  }
-                }
-                settings.writeSettings(values);
-                Navigator.of(context).pop();
-              },
+              onPressed: () => _writeSettings(),
               child: Text('Save'),
             ),
           ),
