@@ -24,6 +24,8 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    sites = [];
+    controllers = [];
 
     settings.readSettings().then((items) {
       for (var item in items) {
@@ -53,6 +55,11 @@ class _SettingsPageState extends State<SettingsPage> {
         controller: controller,
         onChanged: (text) => {},
       ),
+      trailing: TextButton(
+          onPressed: () {
+            controller.text = '';
+          },
+          child: Text('X')),
     );
   }
 
@@ -64,8 +71,10 @@ class _SettingsPageState extends State<SettingsPage> {
         actions: [
           IconButton(
             onPressed: () {
-              sites.add('https://');
-              setState(() {});
+              setState(() {
+                sites.add('https://');
+                controllers = [];
+              });
             },
             icon: Icon(Icons.add),
           ),
@@ -76,15 +85,18 @@ class _SettingsPageState extends State<SettingsPage> {
           for (var site in sites) getListTile(site),
           ListTile(
             title: TextButton(
-                onPressed: () {
-                  List<String> values = [];
-                  for (var controller in controllers) {
+              onPressed: () {
+                List<String> values = [];
+                for (var controller in controllers) {
+                  if (controller.text != '') {
                     values.add(controller.text);
                   }
-                  settings.writeSettings(values);
-                  Navigator.of(context).pop();
-                },
-                child: Text('Save')),
+                }
+                settings.writeSettings(values);
+                Navigator.of(context).pop();
+              },
+              child: Text('Save'),
+            ),
           ),
         ],
       ),

@@ -39,7 +39,6 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   late List<SiteInfo> siteInfos = [];
-  List<String> sites = [];
 
   @override
   void initState() {
