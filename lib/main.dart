@@ -65,7 +65,9 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<SystemInfo> fetchInfo(site) async {
-    final response = await http.get(Uri.parse(site + '/system/info/'));
+    // A site saved with a trailing slash would give "//system/info/", which the sites don't route.
+    final base = site.replaceFirst(RegExp(r'/+$'), '');
+    final response = await http.get(Uri.parse('$base/system/info/'));
 
     if (response.statusCode == 200) {
       return SystemInfo.fromJson(
@@ -89,6 +91,11 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
         actions: [
+          IconButton(
+            onPressed: loadInfos,
+            tooltip: 'Refresh',
+            icon: Icon(Icons.refresh),
+          ),
           IconButton(
             onPressed: () {
               Navigator.push(ctx, SettingsScreen()).then((value) {
