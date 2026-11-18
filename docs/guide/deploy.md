@@ -12,8 +12,8 @@ git remote add production user@server:~/git/shop.git
 
 ## Deploy
 
-When the deploy remote is missing commits, the site's row shows a 🚀 button with their number.
-The ⋮ menu has **Deploy** too.
+Every site with a local repository has a 🚀 **Deploy** button. When the deploy remote is missing
+commits it shows their number; otherwise, or without a deploy remote, it is greyed out.
 
 The app asks first, and says what the push includes:
 

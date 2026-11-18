@@ -176,12 +176,6 @@ class _MyHomePageState extends State<MyHomePage> {
       },
       itemBuilder: (context) => [
         item(Icons.public, 'Browser', () => _launchUrl(siteInfo.url)),
-        if (repoPath != null) ...[
-          item(Icons.difference_outlined, 'Changes',
-              () async => _showChanges(siteInfo)),
-          item(Icons.rocket_launch_outlined, 'Deploy',
-              () => _deployFromMenu(siteInfo)),
-        ],
         if (repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final (target, executable) in services.openInTargets)
@@ -212,22 +206,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // The deploy remote has the commits now.
     if (pushed && mounted) loadInfos();
-  }
-
-  Future<void> _deployFromMenu(SiteInfo siteInfo) async {
-    final status = await siteInfo.repoStatus!;
-    if (!mounted) return;
-
-    if (status.deployRemote == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'This repository has no deploy remote: a git remote other than origin, e.g. a Plesk repository.'),
-      ));
-
-      return;
-    }
-
-    await _deploy(siteInfo, status);
   }
 
   void _openSettings(BuildContext context) {

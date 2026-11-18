@@ -8,8 +8,6 @@ The ⋮ button of a site opens it in other apps.
 | Entry | Opens |
 |---|---|
 | **Browser** | The site. |
-| **Changes** | The [uncommitted changes](./changes) of the local repository. |
-| **Deploy** | Pushes to the deploy remote, see [Deploying](./deploy). |
 | **File manager** | The repository folder (`xdg-open`, e.g. Dolphin). |
 | **Terminal** | A terminal in the repository folder: Konsole, GNOME Terminal, Xfce Terminal or kitty. |
 | **PhpStorm** | The project in PhpStorm. |

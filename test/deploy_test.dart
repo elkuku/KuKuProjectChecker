@@ -237,7 +237,7 @@ void main() {
       expect(find.text('Deploy Shop?'), findsOneWidget);
     });
 
-    testWidgets('are hidden when nothing is pending', (tester) async {
+    testWidgets('are off when nothing is pending', (tester) async {
       await showSite(
           tester,
           const RepoStatus(
@@ -247,8 +247,28 @@ void main() {
               deployRemote: 'production',
               undeployed: 0));
 
-      expect(find.byType(OutlinedButton), findsNothing);
       expect(find.textContaining('Deploy ('), findsNothing);
+      expect(
+          tester
+              .widget<OutlinedButton>(
+                  find.widgetWithText(OutlinedButton, 'Changes'))
+              .onPressed,
+          isNull);
+      expect(
+          tester
+              .widget<ButtonStyleButton>(find.ancestor(
+                  of: find.text('Deploy'),
+                  matching: find.byWidgetPredicate(
+                      (w) => w is ButtonStyleButton)))
+              .onPressed,
+          isNull);
+
+      // The menu only opens the site and the repository elsewhere.
+      await tester.tap(find.byTooltip('Open in …'));
+      await tester.pumpAndSettle();
+      expect(find.text('Browser'), findsOneWidget);
+      expect(find.text('Deploy'), findsOneWidget);
+      expect(find.text('Changes'), findsOneWidget);
     });
   });
 }

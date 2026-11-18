@@ -172,37 +172,47 @@ class _Actions extends StatelessWidget {
         final status = snapshot.data;
         if (status == null) return const SizedBox.shrink();
 
+        // Both buttons are always there, so they stay in place; they are off when
+        // there is nothing to do.
         final changes = status.uncommitted > 0 && onShowChanges != null;
         final deploy = status.deployRemote != null &&
             (status.undeployed ?? 1) > 0 &&
             onDeploy != null;
-        if (!changes && !deploy) return const SizedBox.shrink();
+
+        final changesTooltip = switch (status.uncommitted) {
+          0 => 'No uncommitted files',
+          1 => 'Show the uncommitted file',
+          final n => 'Show the $n uncommitted files',
+        };
+        final deployTooltip = status.deployRemote == null
+            ? 'No deploy remote: add a git remote other than origin, e.g. a Plesk repository'
+            : switch (status.undeployed) {
+                null => 'Deploy to ${status.deployRemote}',
+                0 => 'Nothing to deploy',
+                1 => 'Deploy 1 commit to ${status.deployRemote}',
+                final n => 'Deploy $n commits to ${status.deployRemote}',
+              };
+        final onChanges = changes ? onShowChanges : null;
+        final onDeployPressed = deploy ? () => onDeploy!(status) : null;
 
         if (compact) {
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (changes)
-                _CountButton(
-                  icon: Icons.difference_outlined,
-                  count: status.uncommitted,
-                  tooltip:
-                      'Show the ${status.uncommitted} uncommitted file${status.uncommitted == 1 ? '' : 's'}',
-                  onPressed: onShowChanges!,
-                ),
-              if (changes && deploy) const SizedBox(width: 6),
-              if (deploy)
-                _CountButton(
-                  icon: Icons.rocket_launch,
-                  count: status.undeployed,
-                  tooltip: switch (status.undeployed) {
-                    null => 'Deploy to ${status.deployRemote}',
-                    1 => 'Deploy 1 commit to ${status.deployRemote}',
-                    final n => 'Deploy $n commits to ${status.deployRemote}',
-                  },
-                  filled: true,
-                  onPressed: () => onDeploy!(status),
-                ),
+              _CountButton(
+                icon: Icons.difference_outlined,
+                count: status.uncommitted == 0 ? null : status.uncommitted,
+                tooltip: changesTooltip,
+                onPressed: onChanges,
+              ),
+              const SizedBox(width: 6),
+              _CountButton(
+                icon: Icons.rocket_launch,
+                count: status.undeployed == 0 ? null : status.undeployed,
+                tooltip: deployTooltip,
+                filled: true,
+                onPressed: onDeployPressed,
+              ),
             ],
           );
         }
@@ -213,20 +223,27 @@ class _Actions extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (changes)
-                OutlinedButton.icon(
-                  onPressed: onShowChanges,
+              Tooltip(
+                message: changesTooltip,
+                child: OutlinedButton.icon(
+                  onPressed: onChanges,
                   icon: const Icon(Icons.difference_outlined, size: 18),
-                  label: Text('Changes (${status.uncommitted})'),
+                  label: Text(status.uncommitted == 0
+                      ? 'Changes'
+                      : 'Changes (${status.uncommitted})'),
                 ),
-              if (deploy)
-                FilledButton.tonalIcon(
-                  onPressed: () => onDeploy!(status),
+              ),
+              Tooltip(
+                message: deployTooltip,
+                child: FilledButton.tonalIcon(
+                  onPressed: onDeployPressed,
                   icon: const Icon(Icons.rocket_launch, size: 18),
-                  label: Text(status.undeployed == null
-                      ? 'Deploy'
-                      : 'Deploy (${status.undeployed})'),
+                  label: Text(switch (status.undeployed) {
+                    null || 0 => 'Deploy',
+                    final n => 'Deploy ($n)',
+                  }),
                 ),
+              ),
             ],
           ),
         );
@@ -241,7 +258,7 @@ class _CountButton extends StatelessWidget {
   final int? count;
   final String tooltip;
   final bool filled;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const _CountButton({
     required this.icon,
@@ -259,15 +276,20 @@ class _CountButton extends StatelessWidget {
       minimumSize: WidgetStatePropertyAll(Size(0, 34)),
     );
     final icon = Icon(this.icon, size: 17);
-    final label = Text(count?.toString() ?? '');
 
     return Tooltip(
       message: tooltip,
-      child: filled
-          ? FilledButton.tonalIcon(
-              style: style, onPressed: onPressed, icon: icon, label: label)
-          : OutlinedButton.icon(
-              style: style, onPressed: onPressed, icon: icon, label: label),
+      // Without a number, only the icon.
+      child: switch ((filled, count)) {
+        (true, null) =>
+          FilledButton.tonal(style: style, onPressed: onPressed, child: icon),
+        (true, final n?) => FilledButton.tonalIcon(
+            style: style, onPressed: onPressed, icon: icon, label: Text('$n')),
+        (false, null) =>
+          OutlinedButton(style: style, onPressed: onPressed, child: icon),
+        (false, final n?) => OutlinedButton.icon(
+            style: style, onPressed: onPressed, icon: icon, label: Text('$n')),
+      },
     );
   }
 }

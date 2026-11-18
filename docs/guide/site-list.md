@@ -30,7 +30,8 @@ e.g. a Plesk or Dokku git remote.
 
 ## Buttons
 
-When something is pending, the row shows buttons for it, with the number of files or commits:
+Every site with a local repository has two buttons. They show the number of files or commits
+pending, and are greyed out when there is nothing to do:
 
 - **Changes** (📄 3): the uncommitted files, see [Uncommitted changes](./changes).
 - **Deploy** (🚀 2): pushes the commits to the deploy remote, see [Deploying](./deploy).

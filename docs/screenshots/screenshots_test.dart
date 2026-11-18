@@ -60,6 +60,10 @@ final statuses = {
 class SampleSettings extends Settings {
   @override
   Future<List<Site>> readSettings() async => sites;
+
+  // The settings save on their own; never touch the real settings file.
+  @override
+  Future<File> writeSettings(List<Site> sites) async => File('/dev/null');
 }
 
 class SamplePreferences extends Preferences {
@@ -248,6 +252,9 @@ void main() {
       screenshotTest('settings', (tester) async {
         await showApp(tester, mode);
         await tester.tap(find.byTooltip('Settings'));
+        await tester.pumpAndSettle();
+        // One site open, the others collapsed.
+        await tester.tap(find.byTooltip('Expand').first);
         await tester.pumpAndSettle();
         await snap('05_settings');
       });

@@ -11,8 +11,13 @@ The gear icon opens the list of sites. Each site has:
 ![The settings](../screenshots/05_settings-dark.png){.theme-dark}
 ![The settings](../screenshots/05_settings-light.png){.theme-light}
 
-- **Add a site** with the **+** button.
+- **Open or close** a site with a click on its header or the arrow on the right. Closed, it shows
+  only its name, address and repository; the button next to **Add site** opens or closes all of them.
+- **Add a site** with **Add site**.
 - **Reorder** the sites by dragging them by the handle (⋮⋮) on the left. The site list uses the same order.
-- **Remove** a site with the trash can.
-- **Save** keeps the changes. As long as a site has no valid address (`https://…`), Save
-  refuses and the address field shows what is wrong.
+- **Remove** a site with the trash can; **Undo** in the message at the bottom brings it back.
+
+Changes are **saved on their own**, a moment after you stop typing, and again when you leave the
+settings; the top bar shows *Saved*. As long as a site has no valid address (`https://…`), nothing
+is saved and the address field shows what is wrong. Leaving then asks whether to fix the address or
+leave without that site. A new site you leave empty is dropped.
