@@ -7,6 +7,7 @@ import 'support/repo_status.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
 import 'screens/settings_screen.dart';
+import 'widgets/deploy_dialog.dart';
 import 'widgets/site_card.dart';
 
 void main() {
@@ -175,9 +176,12 @@ class _MyHomePageState extends State<MyHomePage> {
       },
       itemBuilder: (context) => [
         item(Icons.public, 'Browser', () => _launchUrl(siteInfo.url)),
-        if (repoPath != null)
+        if (repoPath != null) ...[
           item(Icons.difference_outlined, 'Changes',
               () async => _showChanges(siteInfo)),
+          item(Icons.rocket_launch_outlined, 'Deploy',
+              () => _deployFromMenu(siteInfo)),
+        ],
         if (repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final (target, executable) in services.openInTargets)
@@ -195,6 +199,35 @@ class _MyHomePageState extends State<MyHomePage> {
         changes: services.repoChanges(siteInfo.repoPath!),
       ),
     ));
+  }
+
+  Future<void> _deploy(SiteInfo siteInfo, RepoStatus status) async {
+    final pushed = await showDeployDialog(
+      context,
+      siteName: siteInfo.name,
+      repoPath: siteInfo.repoPath!,
+      status: status,
+      push: services.push,
+    );
+
+    // The deploy remote has the commits now.
+    if (pushed && mounted) loadInfos();
+  }
+
+  Future<void> _deployFromMenu(SiteInfo siteInfo) async {
+    final status = await siteInfo.repoStatus!;
+    if (!mounted) return;
+
+    if (status.deployRemote == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'This repository has no deploy remote: a git remote other than origin, e.g. a Plesk repository.'),
+      ));
+
+      return;
+    }
+
+    await _deploy(siteInfo, status);
   }
 
   void _openSettings(BuildContext context) {
@@ -272,6 +305,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         onTap: siteInfo.repoPath == null
                             ? null
                             : () => _showChanges(siteInfo),
+                        onDeploy: siteInfo.repoPath == null
+                            ? null
+                            : (status) => _deploy(siteInfo, status),
                       ),
                   ],
                 ),

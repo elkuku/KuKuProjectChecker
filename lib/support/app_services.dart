@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'deployer.dart';
 import 'open_in.dart';
 import 'repo_changes.dart';
 import 'repo_status.dart';
@@ -17,6 +18,9 @@ class AppServices {
   final Future<RepoStatus> Function(String repoPath) checkRepo;
   final RepoChanges Function(String repoPath) repoChanges;
 
+  /// Pushes a branch to the deploy remote.
+  final PushFunction push;
+
   /// The installed apps that can open a repository.
   final List<(OpenInTarget, String)> openInTargets;
 
@@ -25,11 +29,13 @@ class AppServices {
     Future<SystemInfo> Function(String url)? fetchInfo,
     Future<RepoStatus> Function(String repoPath)? checkRepo,
     RepoChanges Function(String repoPath)? repoChanges,
+    PushFunction? push,
     List<(OpenInTarget, String)>? openInTargets,
   })  : settings = settings ?? Settings(),
         fetchInfo = fetchInfo ?? fetchSystemInfo,
         checkRepo = checkRepo ?? RepoStatus.check,
         repoChanges = repoChanges ?? RepoChanges.new,
+        push = push ?? Deployer().push,
         openInTargets = openInTargets ?? OpenInTarget.available();
 
   /// Reads the Symfony and PHP versions from the site's /system/info/ endpoint.
