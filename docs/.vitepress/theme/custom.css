@@ -1,0 +1,52 @@
+:root {
+  /* The app's green. */
+  --vp-c-brand-1: #2e7d32;
+  --vp-c-brand-2: #388e3c;
+  --vp-c-brand-3: #43a047;
+  --vp-c-brand-soft: rgba(67, 160, 71, 0.14);
+  --vp-home-hero-image-background-image: linear-gradient(135deg, #a5d6a7 40%, #43a047 60%);
+  --vp-home-hero-image-filter: blur(56px);
+}
+
+.dark {
+  --vp-c-brand-1: #81c784;
+  --vp-c-brand-2: #66bb6a;
+  --vp-c-brand-3: #4caf50;
+}
+
+/* Desktop screenshots: shown at about their real size, click to zoom. */
+.vp-doc img {
+  max-width: 100%;
+  width: 560px;
+  cursor: zoom-in;
+  border-radius: 10px;
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+  margin: 0.75rem 0.75rem 0.75rem 0;
+  vertical-align: top;
+}
+
+/* Two screenshots side by side where there is room. Markdown wraps them in a <p>. */
+.vp-doc .screens > p {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.25rem;
+  max-width: 1152px;
+  margin: 2.5rem auto 0;
+}
+
+.vp-doc .screens img {
+  width: calc(50% - 0.625rem);
+  min-width: 280px;
+  margin: 0;
+}
+
+.medium-zoom-overlay {
+  z-index: 100;
+}
+
+.medium-zoom-image--opened {
+  z-index: 101;
+  border-radius: 6px;
+}
