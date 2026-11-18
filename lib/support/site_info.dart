@@ -1,10 +1,16 @@
+import 'repo_status.dart';
+
 class SiteInfo {
   final String url;
   final Future<SystemInfo> systemInfo;
 
+  /// Null when no local repository is set for the site.
+  final Future<RepoStatus>? repoStatus;
+
   const SiteInfo({
     required this.url,
     required this.systemInfo,
+    this.repoStatus,
   });
 }
 

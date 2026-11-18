@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../support/settings.dart';
+import '../support/site.dart';
 
 class SettingsScreen extends MaterialPageRoute<Null> {
   SettingsScreen()
@@ -16,67 +17,85 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
+/// The two text fields of one site.
+class _SiteFields {
+  final TextEditingController url;
+  final TextEditingController repoPath;
+
+  _SiteFields(Site site)
+      : url = TextEditingController(text: site.url),
+        repoPath = TextEditingController(text: site.repoPath);
+
+  void dispose() {
+    url.dispose();
+    repoPath.dispose();
+  }
+}
+
 class _SettingsPageState extends State<SettingsPage> {
-  List<String> sites = [];
-  List<TextEditingController> controllers = [];
-  Settings settings = Settings();
+  final List<_SiteFields> fields = [];
+  final Settings settings = Settings();
 
   @override
   void initState() {
     super.initState();
-    sites = [];
-    controllers = [];
 
-    settings.readSettings().then((items) {
-      for (var item in items) {
-        sites.add(item);
-      }
-      setState(() {});
-    }).catchError((error, stackTrace) {
-      //print("outer: $error");
+    settings.readSettings().then((sites) {
+      setState(() {
+        fields.addAll(sites.map(_SiteFields.new));
+      });
     });
   }
 
   @override
   void dispose() {
-    for (var controller in controllers) {
-      controller.dispose();
+    for (var field in fields) {
+      field.dispose();
     }
     super.dispose();
   }
 
-  ListTile _getListTile(String text) {
-    TextEditingController controller = TextEditingController()..text = text;
-
-    controllers.add(controller);
-
+  Widget _getSiteTile(_SiteFields field) {
     return ListTile(
-      title: TextField(
-        controller: controller,
-        onChanged: (text) => {},
+      title: Column(
+        children: [
+          TextField(
+            controller: field.url,
+            decoration: const InputDecoration(labelText: 'Site URL'),
+          ),
+          TextField(
+            controller: field.repoPath,
+            decoration: const InputDecoration(
+              labelText: 'Local repository (optional)',
+              hintText: '~/repos/my-project',
+            ),
+          ),
+        ],
       ),
-      trailing: TextButton(
-        onPressed: () => controller.text = '',
-        child: Text('X'),
+      trailing: IconButton(
+        onPressed: () => setState(() {
+          fields.remove(field);
+          field.dispose();
+        }),
+        tooltip: 'Remove',
+        icon: const Icon(Icons.delete_outline),
       ),
     );
   }
 
   void _writeSettings() {
-    List<String> values = [];
-    for (var controller in controllers) {
-      if (controller.text != '') {
-        values.add(controller.text);
-      }
-    }
-    settings.writeSettings(values);
+    final sites = [
+      for (var field in fields)
+        if (field.url.text.trim() != '')
+          Site(url: field.url.text.trim(), repoPath: field.repoPath.text.trim()),
+    ];
+    settings.writeSettings(sites);
     Navigator.of(context).pop();
   }
 
   void _addSite() {
     setState(() {
-      sites.add('https://');
-      controllers = [];
+      fields.add(_SiteFields(const Site(url: 'https://')));
     });
   }
 
@@ -94,7 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       body: ListView(
         children: <Widget>[
-          for (var site in sites) _getListTile(site),
+          for (var field in fields) _getSiteTile(field),
           ListTile(
             title: TextButton(
               onPressed: () => _writeSettings(),

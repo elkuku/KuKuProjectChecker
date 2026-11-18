@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import 'support/repo_status.dart';
 import 'support/site_info.dart';
 import 'support/settings.dart';
 import 'screens/settings_screen.dart';
+import 'widgets/repo_status_text.dart';
 
 void main() {
   runApp(const MyApp());
@@ -54,8 +56,10 @@ class _MyHomePageState extends State<MyHomePage> {
     settings.readSettings().then((sites) {
       for (var site in sites) {
         siteInfos.add(SiteInfo(
-          url: site,
-          systemInfo: fetchInfo(site),
+          url: site.url,
+          systemInfo: fetchInfo(site.url),
+          repoStatus:
+              site.repoPath.isEmpty ? null : RepoStatus.check(site.repoPath),
         ));
       }
       setState(() {});
@@ -64,7 +68,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<SystemInfo> fetchInfo(site) async {
+  Future<SystemInfo> fetchInfo(String site) async {
     // A site saved with a trailing slash would give "//system/info/", which the sites don't route.
     final base = site.replaceFirst(RegExp(r'/+$'), '');
     final response = await http.get(Uri.parse('$base/system/info/'));
@@ -111,6 +115,9 @@ class _MyHomePageState extends State<MyHomePage> {
           for (var siteInfo in siteInfos)
             ListTile(
               title: Text(siteInfo.url),
+              subtitle: siteInfo.repoStatus == null
+                  ? null
+                  : RepoStatusText(status: siteInfo.repoStatus!),
               leading: TextButton(
                 onPressed: () {
                   _launchUrl(siteInfo.url);

@@ -3,20 +3,21 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'site.dart';
+
 class Settings {
-  Future<List<dynamic>> readSettings() async {
+  Future<List<Site>> readSettings() async {
     try {
       final file = await _localFile;
       final contents = await file.readAsString();
 
-      return jsonDecode(contents);
+      return (jsonDecode(contents) as List).map(Site.fromJson).toList();
     } catch (e) {
-      //print(e);
       return [];
     }
   }
 
-  Future<File> writeSettings(sites) async {
+  Future<File> writeSettings(List<Site> sites) async {
     final file = await _localFile;
 
     return file.writeAsString(jsonEncode(sites));
