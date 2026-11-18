@@ -3,7 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
+import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/preferences.dart';
+import 'package:kuku_project_checker/support/settings.dart';
+import 'package:kuku_project_checker/support/site.dart';
 
 void main() {
   late Directory tmp;
@@ -43,7 +46,8 @@ void main() {
   testWidgets('the app bar button switches and saves the theme',
       (tester) async {
     final recording = _RecordingPreferences();
-    await tester.pumpWidget(MyApp(preferences: recording));
+    await tester
+        .pumpWidget(MyApp(preferences: recording, services: _services()));
     await tester.pump();
 
     Brightness brightness() =>
@@ -64,8 +68,9 @@ void main() {
   });
 
   testWidgets('starts with the saved theme', (tester) async {
-    await tester.pumpWidget(
-        MyApp(preferences: _RecordingPreferences(initial: ThemeMode.dark)));
+    await tester.pumpWidget(MyApp(
+        preferences: _RecordingPreferences(initial: ThemeMode.dark),
+        services: _services()));
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Theme: dark'), findsOneWidget);
@@ -74,8 +79,9 @@ void main() {
   });
 
   testWidgets('tooltips are dark in the dark theme', (tester) async {
-    await tester.pumpWidget(
-        MyApp(preferences: _RecordingPreferences(initial: ThemeMode.dark)));
+    await tester.pumpWidget(MyApp(
+        preferences: _RecordingPreferences(initial: ThemeMode.dark),
+        services: _services()));
     await tester.pumpAndSettle();
 
     final theme = Theme.of(tester.element(find.byType(Scaffold)));
@@ -99,4 +105,13 @@ class _RecordingPreferences extends Preferences {
 
   @override
   Future<void> writeThemeMode(ThemeMode mode) async => saved.add(mode);
+}
+
+/// No sites, no installed apps: the theme tests need no files or plugins.
+AppServices _services() =>
+    AppServices(settings: _NoSites(), openInTargets: const []);
+
+class _NoSites extends Settings {
+  @override
+  Future<List<Site>> readSettings() async => [];
 }

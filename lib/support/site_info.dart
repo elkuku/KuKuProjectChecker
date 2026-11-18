@@ -2,6 +2,12 @@ import 'repo_status.dart';
 
 class SiteInfo {
   final String url;
+
+  /// The site's name, or its host if no name is set.
+  final String name;
+
+  /// True if [name] was set in the settings (not taken from the URL).
+  final bool hasName;
   final Future<SystemInfo> systemInfo;
 
   /// Null when no local repository is set for the site.
@@ -12,6 +18,8 @@ class SiteInfo {
 
   const SiteInfo({
     required this.url,
+    required this.name,
+    this.hasName = false,
     required this.systemInfo,
     this.repoStatus,
     this.repoPath,

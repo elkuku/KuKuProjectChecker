@@ -107,6 +107,16 @@ void main() {
     expect(RepoStatus.expandHome('/abs/path'), '/abs/path');
   });
 
+  test('a site is called by its name, or else by its host', () {
+    final named = Site.fromJson(
+        {'name': 'Shop', 'url': 'https://shop.example.com', 'repoPath': ''});
+
+    expect(named.displayName, 'Shop');
+    expect(named.toJson()['name'], 'Shop');
+    expect(const Site(url: 'https://shop.example.com/').displayName,
+        'shop.example.com');
+  });
+
   test('reads the old and the new settings format', () {
     final old = Site.fromJson('https://a.example');
     final current =
@@ -115,6 +125,7 @@ void main() {
     expect(old.url, 'https://a.example');
     expect(old.repoPath, '');
     expect(current.repoPath, '~/repos/b');
-    expect(current.toJson(), {'url': 'https://b.example', 'repoPath': '~/repos/b'});
+    expect(current.toJson(),
+        {'name': '', 'url': 'https://b.example', 'repoPath': '~/repos/b'});
   });
 }

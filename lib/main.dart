@@ -1,26 +1,26 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-import 'support/open_in.dart';
+import 'support/app_services.dart';
 import 'support/preferences.dart';
 import 'support/repo_status.dart';
 import 'support/site_info.dart';
-import 'support/settings.dart';
+import 'screens/changes_screen.dart';
 import 'screens/settings_screen.dart';
-import 'widgets/repo_status_text.dart';
+import 'widgets/site_card.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.preferences});
+  const MyApp({super.key, this.preferences, this.services});
 
   /// Where the theme choice is saved; the default is the app's support folder.
   final Preferences? preferences;
+
+  /// The settings, sites, repositories and apps; the default is the real ones.
+  final AppServices? services;
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -28,6 +28,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   late final Preferences preferences = widget.preferences ?? Preferences();
+  late final AppServices services = widget.services ?? AppServices();
   ThemeMode themeMode = ThemeMode.system;
 
   @override
@@ -68,14 +69,16 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'KuKu Site Info',
+      title: 'KuKu Project Checker',
+      debugShowCheckedModeBanner: false,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: themeMode,
       home: MyHomePage(
-        title: 'KuKu Site Info',
+        title: 'KuKu Project Checker',
         themeMode: themeMode,
         onSwitchTheme: _switchTheme,
+        services: services,
       ),
     );
   }
@@ -87,11 +90,13 @@ class MyHomePage extends StatefulWidget {
     required this.title,
     this.themeMode = ThemeMode.system,
     this.onSwitchTheme,
+    required this.services,
   });
 
   final String title;
   final ThemeMode themeMode;
   final VoidCallback? onSwitchTheme;
+  final AppServices services;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -99,9 +104,9 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   late List<SiteInfo> siteInfos = [];
+  bool loaded = false;
 
-  /// The installed apps that can open a repository, looked up once.
-  final List<(OpenInTarget, String)> openInTargets = OpenInTarget.available();
+  AppServices get services => widget.services;
 
   @override
   void initState() {
@@ -111,38 +116,32 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void loadInfos() {
-    var settings = Settings();
     siteInfos = [];
 
-    settings.readSettings().then((sites) {
+    services.settings.readSettings().then((sites) {
       for (var site in sites) {
+        // The list shows the errors; mark them as handled so a site that is not
+        // reachable is not also reported as an uncaught error before that.
+        final systemInfo = services.fetchInfo(site.url)..ignore();
+        final repoStatus = site.repoPath.isEmpty
+            ? null
+            : (services.checkRepo(site.repoPath)..ignore());
+
         siteInfos.add(SiteInfo(
           url: site.url,
-          systemInfo: fetchInfo(site.url),
-          repoStatus:
-              site.repoPath.isEmpty ? null : RepoStatus.check(site.repoPath),
+          name: site.displayName,
+          hasName: site.name.isNotEmpty,
+          systemInfo: systemInfo,
+          repoStatus: repoStatus,
           repoPath: site.repoPath.isEmpty
               ? null
               : RepoStatus.expandHome(site.repoPath),
         ));
       }
-      setState(() {});
+      if (mounted) setState(() => loaded = true);
     }).catchError((error, stackTrace) {
-      //print("outer: $error");
+      if (mounted) setState(() => loaded = true);
     });
-  }
-
-  Future<SystemInfo> fetchInfo(String site) async {
-    // A site saved with a trailing slash would give "//system/info/", which the sites don't route.
-    final base = site.replaceFirst(RegExp(r'/+$'), '');
-    final response = await http.get(Uri.parse('$base/system/info/'));
-
-    if (response.statusCode == 200) {
-      return SystemInfo.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>);
-    } else {
-      throw Exception('Failed to load system info');
-    }
   }
 
   /// The "Open in" menu of a site: the site in the browser, and its repository
@@ -176,13 +175,54 @@ class _MyHomePageState extends State<MyHomePage> {
       },
       itemBuilder: (context) => [
         item(Icons.public, 'Browser', () => _launchUrl(siteInfo.url)),
-        if (repoPath != null && openInTargets.isNotEmpty) ...[
+        if (repoPath != null)
+          item(Icons.difference_outlined, 'Changes',
+              () async => _showChanges(siteInfo)),
+        if (repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
-          for (final (target, executable) in openInTargets)
+          for (final (target, executable) in services.openInTargets)
             item(target.icon, target.label,
                 () => target.open(executable, repoPath)),
         ],
       ],
+    );
+  }
+
+  void _showChanges(SiteInfo siteInfo) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChangesScreen(
+        title: siteInfo.name,
+        changes: services.repoChanges(siteInfo.repoPath!),
+      ),
+    ));
+  }
+
+  void _openSettings(BuildContext context) {
+    Navigator.push(context, SettingsScreen(settings: services.settings))
+        .then((value) => loadInfos());
+  }
+
+  Widget _emptyState(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.travel_explore,
+              size: 64, color: theme.colorScheme.primary),
+          const SizedBox(height: 16),
+          Text('No sites yet', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 8),
+          const Text('Add your Symfony sites in the settings.'),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => _openSettings(context),
+            icon: const Icon(Icons.settings),
+            label: const Text('Open settings'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -212,45 +252,29 @@ class _MyHomePageState extends State<MyHomePage> {
             icon: Icon(Icons.refresh),
           ),
           IconButton(
-            onPressed: () {
-              Navigator.push(ctx, SettingsScreen()).then((value) {
-                loadInfos();
-              });
-            },
+            onPressed: () => _openSettings(ctx),
+            tooltip: 'Settings',
             icon: Icon(Icons.settings),
           ),
         ],
       ),
-      body: ListView(
-        children: <Widget>[
-          for (var siteInfo in siteInfos)
-            ListTile(
-              title: Text(siteInfo.url),
-              subtitle: siteInfo.repoStatus == null
-                  ? null
-                  : RepoStatusText(status: siteInfo.repoStatus!),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FutureBuilder<SystemInfo>(
-                    future: siteInfo.systemInfo,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        return Text(
-                            'PHP: ${snapshot.data!.phpVersion} - SF: ${snapshot.data!.sfVersion}');
-                      } else if (snapshot.hasError) {
-                        return Text('Error');
-                      }
-
-                      return const CircularProgressIndicator();
-                    },
-                  ),
-                  _openInMenu(siteInfo),
-                ],
-              ),
-            ),
-        ],
-      ),
+      body: !loaded
+          ? const Center(child: CircularProgressIndicator())
+          : siteInfos.isEmpty
+              ? _emptyState(ctx)
+              : ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  children: [
+                    for (final siteInfo in siteInfos)
+                      SiteCard(
+                        site: siteInfo,
+                        menu: _openInMenu(siteInfo),
+                        onTap: siteInfo.repoPath == null
+                            ? null
+                            : () => _showChanges(siteInfo),
+                      ),
+                  ],
+                ),
     );
   }
 }
