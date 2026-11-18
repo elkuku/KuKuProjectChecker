@@ -1,4 +1,4 @@
-// Renders the screenshots for the documentation from sample data.
+// Renders the screenshots for the documentation from sample data, in both themes.
 //
 // Regenerate them after changing the app:
 //   flutter test --update-goldens docs/screenshots/screenshots_test.dart
@@ -183,41 +183,42 @@ void main() {
     });
   }
 
-  Future<void> snap(String name) =>
-      expectLater(find.byType(MaterialApp), matchesGoldenFile('$name.png'));
+  for (final mode in [ThemeMode.dark, ThemeMode.light]) {
+    // Each screenshot in both themes, e.g. 01_sites-dark.png and 01_sites-light.png;
+    // the docs show the one matching the reader's theme.
+    Future<void> snap(String name) => expectLater(
+        find.byType(MaterialApp), matchesGoldenFile('$name-${mode.name}.png'));
 
-  screenshotTest('site list, light', (tester) async {
-    await showApp(tester, ThemeMode.light);
-    await snap('01_sites_light');
-  });
+    group(mode.name, () {
+      screenshotTest('site list', (tester) async {
+        await showApp(tester, mode);
+        await snap('01_sites');
+      });
 
-  screenshotTest('site list, dark', (tester) async {
-    await showApp(tester, ThemeMode.dark);
-    await snap('02_sites_dark');
-  });
+      screenshotTest('open in menu', (tester) async {
+        await showApp(tester, mode);
+        await tester.tap(find.byTooltip('Open in …').first);
+        await tester.pumpAndSettle();
+        await snap('02_open_in_menu');
+      });
 
-  screenshotTest('open in menu', (tester) async {
-    await showApp(tester, ThemeMode.light);
-    await tester.tap(find.byTooltip('Open in …').first);
-    await tester.pumpAndSettle();
-    await snap('03_open_in_menu');
-  });
+      screenshotTest('changes', (tester) async {
+        await showApp(tester, mode);
+        await tester.tap(find.text('Shop'));
+        await tester.pumpAndSettle();
+        await snap('03_changes');
 
-  screenshotTest('changes', (tester) async {
-    await showApp(tester, ThemeMode.light);
-    await tester.tap(find.text('Shop'));
-    await tester.pumpAndSettle();
-    await snap('04_changes');
+        await tester.tap(find.text('src/Controller/CartController.php'));
+        await tester.pumpAndSettle();
+        await snap('04_diff');
+      });
 
-    await tester.tap(find.text('src/Controller/CartController.php'));
-    await tester.pumpAndSettle();
-    await snap('05_diff');
-  });
-
-  screenshotTest('settings', (tester) async {
-    await showApp(tester, ThemeMode.light);
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    await snap('06_settings');
-  });
+      screenshotTest('settings', (tester) async {
+        await showApp(tester, mode);
+        await tester.tap(find.byTooltip('Settings'));
+        await tester.pumpAndSettle();
+        await snap('05_settings');
+      });
+    });
+  }
 }

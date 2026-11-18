@@ -2,7 +2,8 @@
 
 The ⋮ button of a site opens it in other apps.
 
-![The Open in menu](../screenshots/03_open_in_menu.png)
+![The Open in menu](../screenshots/02_open_in_menu-dark.png){.theme-dark}
+![The Open in menu](../screenshots/02_open_in_menu-light.png){.theme-light}
 
 | Entry | Opens |
 |---|---|

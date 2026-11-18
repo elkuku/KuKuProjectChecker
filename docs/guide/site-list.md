@@ -3,7 +3,8 @@
 Each site is a card with its name, its address, its versions and, if a local repository is set,
 the state of that repository.
 
-![The site list](../screenshots/01_sites_light.png)
+![The site list](../screenshots/01_sites-dark.png){.theme-dark}
+![The site list](../screenshots/01_sites-light.png){.theme-light}
 
 ## Versions
 
@@ -41,4 +42,6 @@ shows only after a `git fetch`.
 | ⟳ | Reads all versions and repositories again. |
 | ⚙ | The settings, see [Managing sites](./settings). |
 
-![The dark theme](../screenshots/02_sites_dark.png)
+::: tip
+The screenshots in this documentation follow its theme: switch it with the toggle at the top.
+:::

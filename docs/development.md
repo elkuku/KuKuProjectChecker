@@ -36,7 +36,16 @@ npm run docs:build
 
 ### Screenshots
 
-The screenshots are rendered by a Flutter test from sample data, with real fonts, in both themes:
+The screenshots are rendered by a Flutter test from sample data, with real fonts, in both themes
+(`…-dark.png` and `…-light.png`). The pages show the one matching the reader's theme; use both in
+Markdown like this:
+
+```md
+![The site list](./screenshots/01_sites-dark.png){.theme-dark}
+![The site list](./screenshots/01_sites-light.png){.theme-light}
+```
+
+To regenerate them:
 
 ```bash
 flutter test --update-goldens docs/screenshots/screenshots_test.dart

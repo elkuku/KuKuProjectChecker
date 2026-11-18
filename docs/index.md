@@ -33,7 +33,9 @@ features:
 
 <div class="screens">
 
-![The site list](./screenshots/01_sites_light.png)
-![The site list in the dark theme](./screenshots/02_sites_dark.png)
+![The site list](./screenshots/01_sites-dark.png){.theme-dark}
+![The site list](./screenshots/01_sites-light.png){.theme-light}
+![The diff of a file](./screenshots/04_diff-dark.png){.theme-dark}
+![The diff of a file](./screenshots/04_diff-light.png){.theme-light}
 
 </div>

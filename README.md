@@ -6,7 +6,10 @@ Your Symfony sites at a glance: the PHP and Symfony versions of every site, and 
 committed, pushed or deployed in its local repository. Shows the uncommitted changes with their
 diffs, and opens a project in the browser, the file manager, a terminal, PhpStorm or VS Code.
 
-<img src="docs/screenshots/01_sites_light.png" alt="The site list" width="480">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/01_sites-dark.png">
+  <img src="docs/screenshots/01_sites-light.png" alt="The site list" width="480">
+</picture>
 
 **Documentation:** https://elkuku.github.io/KuKuProjectChecker/
 

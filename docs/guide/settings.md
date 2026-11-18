@@ -8,7 +8,8 @@ The gear icon opens the list of sites. Each site has:
   With it, the site list shows the repository's status, and the [changes](./changes) and the
   [Open in …](./open-in) apps become available.
 
-![The settings](../screenshots/06_settings.png)
+![The settings](../screenshots/05_settings-dark.png){.theme-dark}
+![The settings](../screenshots/05_settings-light.png){.theme-light}
 
 - **Add a site** with the **+** button.
 - **Reorder** the sites by dragging them by the handle (⋮⋮) on the left. The site list uses the same order.
