@@ -35,6 +35,7 @@ export default defineConfig({
           { text: 'Managing sites', link: '/guide/settings' },
           { text: 'Open in …', link: '/guide/open-in' },
           { text: 'Uncommitted changes', link: '/guide/changes' },
+          { text: 'Deploying', link: '/guide/deploy' },
         ],
       },
       {

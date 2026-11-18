@@ -1,7 +1,7 @@
 # Uncommitted changes
 
-Tap a site's card, or choose **Changes** in its ⋮ menu, to see the uncommitted files of its
-local repository.
+Click the changes button (with the number of files) on a site's row, click the row, or choose
+**Changes** in its ⋮ menu, to see the uncommitted files of its local repository.
 
 ![The uncommitted files](../screenshots/03_changes-dark.png){.theme-dark}
 ![The uncommitted files](../screenshots/03_changes-light.png){.theme-light}

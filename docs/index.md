@@ -27,6 +27,9 @@ features:
     title: Changes and diffs
     details: Lists the uncommitted files of a project and shows the diff of each file, colored.
   - icon: 🚀
+    title: Deploy with one click
+    details: Pushes the new commits to the deploy remote, e.g. Plesk, after showing what the push includes.
+  - icon: 🧭
     title: Open in …
     details: Opens a project in the browser, the file manager, a terminal, PhpStorm, VS Code, Kate or gitk.
 ---

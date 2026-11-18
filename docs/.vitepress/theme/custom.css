@@ -17,7 +17,7 @@
 /* Desktop screenshots: shown at about their real size, click to zoom. */
 .vp-doc img {
   max-width: 100%;
-  width: 560px;
+  width: 100%;
   cursor: zoom-in;
   border-radius: 10px;
   border: 1px solid var(--vp-c-divider);

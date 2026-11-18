@@ -122,6 +122,26 @@ AppServices sampleServices() => AppServices(
           versions[url] ?? (throw const SocketException('Connection refused')),
       checkRepo: (path) async => statuses[path]!,
       repoChanges: SampleChanges.new,
+      push: (repoPath, remote, branch, onOutput) async {
+        // Like a push to a Plesk repository: ssh's notice, curl's progress table
+        // from the deploy hook, then the result.
+        for (final line in [
+          '** WARNING: connection is not using a post-quantum key exchange algorithm.',
+          '** This session may be vulnerable to "store now, decrypt later" attacks.',
+          '** The server may need to be upgraded. See https://openssh.com/pq.html',
+          'Enumerating objects: 23, done.',
+          'Writing objects: 100% (14/14), 2.31 KiB | 2.31 MiB/s, done.',
+          'Total 14 (delta 9), reused 0 (delta 0), pack-reused 0',
+          'remote:   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current',
+          'remote:                                  Dload  Upload   Total   Spent    Left  Speed',
+          'remote:   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0',
+          'To shop.example.com:~/git/shop.git',
+          '   4c1d2e9..8f7a6b5  master -> master',
+        ]) {
+          onOutput(line);
+        }
+        return 0;
+      },
       openInTargets: [
         for (final target in OpenInTarget.all)
           (target, '/usr/bin/${target.commands.first}'),
@@ -161,7 +181,8 @@ void main() {
   });
 
   Future<void> showApp(WidgetTester tester, ThemeMode mode) async {
-    tester.view.physicalSize = const Size(1120, 1180);
+    // The app's default window: 1000 wide.
+    tester.view.physicalSize = const Size(2000, 1400);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
 
@@ -211,6 +232,17 @@ void main() {
         await tester.tap(find.text('src/Controller/CartController.php'));
         await tester.pumpAndSettle();
         await snap('04_diff');
+      });
+
+      screenshotTest('deploy', (tester) async {
+        await showApp(tester, mode);
+        await tester.tap(find.byTooltip('Deploy 2 commits to production'));
+        await tester.pumpAndSettle();
+        await snap('06_deploy_confirm');
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+        await tester.pumpAndSettle();
+        await snap('07_deploy_done');
       });
 
       screenshotTest('settings', (tester) async {

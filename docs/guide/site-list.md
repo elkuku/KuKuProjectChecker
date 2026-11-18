@@ -28,6 +28,16 @@ The line at the bottom shows the branch of the local repository and what is pend
 The **deploy remote** is the first remote that is not `origin` and not an HTTP(S) address,
 e.g. a Plesk or Dokku git remote.
 
+## Buttons
+
+When something is pending, the row shows buttons for it, with the number of files or commits:
+
+- **Changes** (📄 3): the uncommitted files, see [Uncommitted changes](./changes).
+- **Deploy** (🚀 2): pushes the commits to the deploy remote, see [Deploying](./deploy).
+
+In a wide window each site is one compact row and the buttons show only the icon and the number;
+hover over them for what they do. In a narrow window the site is a card with labeled buttons.
+
 ::: info Nothing is fetched
 The app never contacts the remotes, so it never asks for an SSH passphrase. "Unpushed" and
 "not deployed" compare with what this machine fetched or pushed last. A push from another machine
