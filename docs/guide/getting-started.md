@@ -36,7 +36,7 @@ Run the script again only if the icon or the menu entry changed.
 
 ## First start
 
-The list is empty at first. Open the settings with the gear icon and add your sites, see
+The list is empty at first. Add your sites with **Add site** (or ＋ in the top bar), see
 [Managing sites](./settings). Each site has to report its versions, see
 [Site requirements](./site-requirements).
 

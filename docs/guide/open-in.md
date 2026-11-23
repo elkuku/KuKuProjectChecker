@@ -1,13 +1,14 @@
 # Open in …
 
-The ⋮ button of a site opens it in other apps.
+The ⋮ menu of a site opens it in other apps. Its first entries edit or remove the site,
+see [Managing sites](./settings).
 
 ![The Open in menu](../screenshots/02_open_in_menu-dark.png){.theme-dark}
 ![The Open in menu](../screenshots/02_open_in_menu-light.png){.theme-light}
 
 | Entry | Opens |
 |---|---|
-| **Browser** | The site. |
+| **Open in browser** | The site. |
 | **File manager** | The repository folder (`xdg-open`, e.g. Dolphin). |
 | **Terminal** | A terminal in the repository folder: Konsole, GNOME Terminal, Xfce Terminal or kitty. |
 | **PhpStorm** | The project in PhpStorm. |
@@ -15,7 +16,7 @@ The ⋮ button of a site opens it in other apps.
 | **Kate** | The folder in Kate. |
 | **gitk (history)** | The history of all branches. |
 
-Only **Browser** is shown for a site without a local repository, and only the apps that are installed
+Only **Open in browser** is shown for a site without a local repository, and only the apps that are installed
 are listed.
 
 ::: tip PhpStorm from the JetBrains Toolbox

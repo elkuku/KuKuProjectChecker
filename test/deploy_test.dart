@@ -258,15 +258,15 @@ void main() {
           tester
               .widget<ButtonStyleButton>(find.ancestor(
                   of: find.text('Deploy'),
-                  matching: find.byWidgetPredicate(
-                      (w) => w is ButtonStyleButton)))
+                  matching:
+                      find.byWidgetPredicate((w) => w is ButtonStyleButton)))
               .onPressed,
           isNull);
 
-      // The menu only opens the site and the repository elsewhere.
-      await tester.tap(find.byTooltip('Open in …'));
+      // The menu edits, removes or opens the site; it doesn't deploy.
+      await tester.tap(find.byTooltip('Edit, remove or open the site'));
       await tester.pumpAndSettle();
-      expect(find.text('Browser'), findsOneWidget);
+      expect(find.text('Open in browser'), findsOneWidget);
       expect(find.text('Deploy'), findsOneWidget);
       expect(find.text('Changes'), findsOneWidget);
     });

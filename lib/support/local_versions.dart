@@ -16,7 +16,8 @@ class LocalVersions {
   /// The version in the image tag, e.g. "12.3" for mariadb:12.3 or "16" for postgres:16-alpine.
   final String? dbVersion;
 
-  const LocalVersions({this.symfony, this.php, this.dbPlatform, this.dbVersion});
+  const LocalVersions(
+      {this.symfony, this.php, this.dbPlatform, this.dbVersion});
 
   /// The compose files, in the order docker compose reads them (later ones win).
   static const composeFiles = [
@@ -36,8 +37,8 @@ class LocalVersions {
       {Future<String?> Function()? phpVersion}) async {
     String? symfony;
     try {
-      symfony = symfonyFromLock(
-          await File('$repoPath/composer.lock').readAsString());
+      symfony =
+          symfonyFromLock(await File('$repoPath/composer.lock').readAsString());
     } on IOException {
       symfony = null;
     }
@@ -62,8 +63,7 @@ class LocalVersions {
   /// The version of the `php` on the PATH; asked once per app start.
   static Future<String?> localPhpVersion() => _php ??= () async {
         try {
-          final result =
-              await Process.run('php', ['-r', 'echo PHP_VERSION;']);
+          final result = await Process.run('php', ['-r', 'echo PHP_VERSION;']);
           final out = (result.stdout as String).trim();
           return result.exitCode == 0 && out.isNotEmpty ? out : null;
         } on ProcessException {
@@ -94,8 +94,9 @@ class LocalVersions {
     (String, String)? found;
 
     for (final text in files) {
-      for (final match in RegExp(r'''^\s*image:\s*['"]?([^'"\s#]+)''', multiLine: true)
-          .allMatches(text)) {
+      for (final match
+          in RegExp(r'''^\s*image:\s*['"]?([^'"\s#]+)''', multiLine: true)
+              .allMatches(text)) {
         // ${VAR:-default} and ${VAR-default} become the default.
         final image = match.group(1)!.replaceAllMapped(
             RegExp(r'\$\{[^}:-]+:?-([^}]*)\}'), (m) => m.group(1)!);

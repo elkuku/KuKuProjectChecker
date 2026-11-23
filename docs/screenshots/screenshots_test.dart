@@ -222,7 +222,7 @@ void main() {
 
       screenshotTest('open in menu', (tester) async {
         await showApp(tester, mode);
-        await tester.tap(find.byTooltip('Open in …').first);
+        await tester.tap(find.byTooltip('Edit, remove or open the site').first);
         await tester.pumpAndSettle();
         await snap('02_open_in_menu');
       });
@@ -249,14 +249,13 @@ void main() {
         await snap('07_deploy_done');
       });
 
-      screenshotTest('settings', (tester) async {
+      screenshotTest('edit site', (tester) async {
         await showApp(tester, mode);
-        await tester.tap(find.byTooltip('Settings'));
+        await tester.tap(find.byTooltip('Edit, remove or open the site').first);
         await tester.pumpAndSettle();
-        // One site open, the others collapsed.
-        await tester.tap(find.byTooltip('Expand').first);
+        await tester.tap(find.text('Edit…'));
         await tester.pumpAndSettle();
-        await snap('05_settings');
+        await snap('05_edit_site');
       });
     });
   }

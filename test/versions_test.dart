@@ -89,29 +89,36 @@ void main() {
     });
 
     test('reads the database from the compose image', () {
-      expect(LocalVersions.databaseFromCompose(['''
+      expect(
+          LocalVersions.databaseFromCompose([
+            '''
 services:
   database:
     # Matches the production server
     image: mariadb:12.3
   pma:
     image: phpmyadmin
-''']), ('mariadb', '12.3'));
+'''
+          ]),
+          ('mariadb', '12.3'));
 
-      expect(LocalVersions.databaseFromCompose(['''
+      expect(
+          LocalVersions.databaseFromCompose([
+            '''
 services:
   database:
     image: postgres:\${POSTGRES_VERSION:-16}-alpine
-''']), ('postgresql', '16'));
+'''
+          ]),
+          ('postgresql', '16'));
 
-      expect(
-          LocalVersions.databaseFromCompose(["    image: 'mysql:8.0.32'"]),
+      expect(LocalVersions.databaseFromCompose(["    image: 'mysql:8.0.32'"]),
           ('mysql', '8.0.32'));
       expect(
           LocalVersions.databaseFromCompose(['image: postgis/postgis:16-3.4']),
           ('postgresql', '16'));
-      expect(LocalVersions.databaseFromCompose(['image: mariadb:latest']),
-          isNull);
+      expect(
+          LocalVersions.databaseFromCompose(['image: mariadb:latest']), isNull);
       expect(LocalVersions.databaseFromCompose(['image: adminer:4']), isNull);
     });
 
@@ -156,9 +163,10 @@ services:
   });
 
   group('version badges', () {
-    Future<void> showSite(WidgetTester tester, SystemInfo info,
-        LocalVersions? local) async {
-      tester.view.physicalSize = const Size(800, 700);
+    Future<void> showSite(
+        WidgetTester tester, SystemInfo info, LocalVersions? local,
+        {double width = 800}) async {
+      tester.view.physicalSize = Size(width, 700);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
@@ -208,7 +216,8 @@ services:
       expect(find.byIcon(Icons.compare_arrows), findsNothing);
       expect(tooltipOf(tester, 'MariaDB 12.3.4'),
           'MariaDB 12.3.4-MariaDB-deb12 on the site\nMariaDB 12.3 locally');
-      expect(tooltipOf(tester, '3h ago'), startsWith('Last deploy: deployed\n'));
+      expect(
+          tooltipOf(tester, '3h ago'), startsWith('Last deploy: deployed\n'));
     });
 
     testWidgets('mark versions that differ from the local project',
@@ -235,8 +244,34 @@ services:
           contains('Symfony 8.1.11 locally'));
       expect(tooltipOf(tester, 'PostgreSQL 13.23'),
           contains('The site runs a different version'));
-      expect(tooltipOf(tester, 'unknown'),
-          'Last deploy: finished with errors');
+      expect(tooltipOf(tester, 'unknown'), 'Last deploy: finished with errors');
+    });
+
+    testWidgets('are compact in a wide window', (tester) async {
+      await showSite(
+        tester,
+        SystemInfo(
+          sfVersion: '8.1.11',
+          phpVersion: '8.5.12',
+          dbPlatform: 'mariadb',
+          dbVersion: '12.3.4-MariaDB-deb12',
+          lastDeploy: LastDeploy(
+              at: DateTime.now().subtract(const Duration(minutes: 7)),
+              status: 'ok'),
+        ),
+        const LocalVersions(symfony: '8.1.11', php: '8.5.13'),
+        width: 1300,
+      );
+
+      // Only the numbers; the icons and tooltips say what they are.
+      expect(find.text('8.5.12'), findsOneWidget);
+      expect(find.text('8.1.11'), findsOneWidget);
+      expect(find.text('12.3.4'), findsOneWidget);
+      expect(find.text('7m'), findsOneWidget);
+      expect(tooltipOf(tester, '8.1.11'),
+          'Symfony 8.1.11 on the site\nSymfony 8.1.11 locally');
+      expect(tooltipOf(tester, '12.3.4'),
+          'MariaDB 12.3.4-MariaDB-deb12 on the site');
     });
 
     testWidgets('show only the versions for an older site', (tester) async {

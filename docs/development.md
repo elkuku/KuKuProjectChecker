@@ -16,7 +16,7 @@ so they need `git`.
 | Folder | |
 |---|---|
 | `lib/main.dart` | The app, the site list and the theme. |
-| `lib/screens/` | The settings, the uncommitted changes and the diff. |
+| `lib/screens/` | The uncommitted changes and the diff. |
 | `lib/widgets/` | The site card and the repository status line. |
 | `lib/support/app_services.dart` | Everything the app reads from outside: settings, sites, repositories, installed apps. Tests and the screenshots replace it with sample data. |
 | `lib/support/repo_status.dart` | Branch, uncommitted, unpushed and undeployed counts, from local git data only. |

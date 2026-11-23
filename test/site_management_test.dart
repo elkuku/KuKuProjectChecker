@@ -1,0 +1,203 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kuku_project_checker/main.dart';
+import 'package:kuku_project_checker/support/app_services.dart';
+import 'package:kuku_project_checker/support/local_versions.dart';
+import 'package:kuku_project_checker/support/preferences.dart';
+import 'package:kuku_project_checker/support/repo_status.dart';
+import 'package:kuku_project_checker/support/settings.dart';
+import 'package:kuku_project_checker/support/site.dart';
+import 'package:kuku_project_checker/support/site_info.dart';
+
+/// Settings in memory: what the app saves can be checked.
+class _MemorySettings extends Settings {
+  List<Site> sites;
+  int writes = 0;
+
+  _MemorySettings(this.sites);
+
+  @override
+  Future<List<Site>> readSettings() async => [...sites];
+
+  @override
+  Future<File> writeSettings(List<Site> s) async {
+    sites = [...s];
+    writes++;
+    return File('/dev/null');
+  }
+}
+
+class _Light extends Preferences {
+  @override
+  Future<ThemeMode> readThemeMode() async => ThemeMode.light;
+
+  @override
+  Future<void> writeThemeMode(ThemeMode mode) async {}
+}
+
+const _shop = Site(
+    name: 'Shop', url: 'https://shop.example.com', repoPath: '/repos/shop');
+const _blog = Site(name: 'Blog', url: 'https://blog.example.com');
+
+void main() {
+  late _MemorySettings settings;
+  late List<String> fetched;
+
+  Future<void> showApp(WidgetTester tester, List<Site> sites,
+      {double width = 1000}) async {
+    tester.view.physicalSize = Size(width, 760);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    settings = _MemorySettings(sites);
+    fetched = [];
+    await tester.pumpWidget(MyApp(
+      preferences: _Light(),
+      services: AppServices(
+        settings: settings,
+        fetchInfo: (url) async {
+          fetched.add(url);
+          return const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12');
+        },
+        checkRepo: (_) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0, unpushed: 0),
+        readLocal: (_) async => const LocalVersions(),
+        openInTargets: const [],
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openMenu(WidgetTester tester, String site) async {
+    await tester.tap(find.descendant(
+        of: find.ancestor(of: find.text(site), matching: find.byType(Card)),
+        matching: find.byTooltip('Edit, remove or open the site')));
+    await tester.pumpAndSettle();
+  }
+
+  TextField field(WidgetTester tester, String label) =>
+      tester.widget<TextField>(find.widgetWithText(TextField, label));
+
+  testWidgets('an empty list offers to add a site', (tester) async {
+    await showApp(tester, []);
+
+    expect(find.text('No sites yet'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Add site'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Shop');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Site URL'), 'https://shop.example.com');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shop'), findsOneWidget);
+    expect(settings.sites.single.url, 'https://shop.example.com');
+    expect(fetched, ['https://shop.example.com']);
+  });
+
+  testWidgets('a new site needs a valid address', (tester) async {
+    await showApp(tester, [_shop]);
+
+    await tester.tap(find.byTooltip('Add site'));
+    await tester.pumpAndSettle();
+    expect(field(tester, 'Site URL').controller!.text, 'https://');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter the address of the site'), findsOneWidget);
+
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Site URL'), 'shop.example.com');
+    await tester.pump();
+    expect(find.text('Use a full address, like https://shop.example.com'),
+        findsOneWidget);
+    expect(settings.writes, 0);
+
+    // Cancel adds nothing.
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(settings.sites, hasLength(1));
+  });
+
+  testWidgets('edit a site and reload only that one', (tester) async {
+    await showApp(tester, [_shop, _blog]);
+    expect(fetched, hasLength(2));
+
+    await openMenu(tester, 'Blog');
+    await tester.tap(find.text('Edit…'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit site'), findsOneWidget);
+    expect(field(tester, 'Name').controller!.text, 'Blog');
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'News');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Local repository'), '~/repos/news');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('News'), findsOneWidget);
+    expect(find.text('Blog'), findsNothing);
+    expect(settings.sites[1].name, 'News');
+    expect(settings.sites[1].repoPath, '~/repos/news');
+    expect(fetched, hasLength(3), reason: 'Only the edited site is read again');
+    // With a repository it now shows its status.
+    expect(find.textContaining('master'), findsNWidgets(2));
+  });
+
+  testWidgets('remove a site and bring it back', (tester) async {
+    await showApp(tester, [_shop, _blog]);
+
+    await openMenu(tester, 'Shop');
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shop'), findsNothing);
+    expect(settings.sites.map((s) => s.name), ['Blog']);
+    expect(find.text('Removed Shop'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Shop'), findsOneWidget);
+    expect(settings.sites.map((s) => s.name), ['Shop', 'Blog']);
+  });
+
+  testWidgets('drag a site to another place', (tester) async {
+    await showApp(tester, [_shop, _blog]);
+
+    final handle = find.byIcon(Icons.drag_indicator);
+    expect(handle, findsNWidgets(2));
+
+    // Drag Blog's handle above Shop.
+    final drag = await tester.startGesture(tester.getCenter(handle.last));
+    await tester.pump(const Duration(milliseconds: 100));
+    await drag.moveBy(const Offset(0, -150));
+    await tester.pump();
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    expect(settings.sites.map((s) => s.name), ['Blog', 'Shop']);
+    expect(tester.getTopLeft(find.text('Blog')).dy,
+        lessThan(tester.getTopLeft(find.text('Shop')).dy));
+  });
+
+  testWidgets('the menu still opens the site', (tester) async {
+    await showApp(tester, [_shop]);
+
+    await openMenu(tester, 'Shop');
+    expect(find.text('Edit…'), findsOneWidget);
+    expect(find.text('Remove'), findsOneWidget);
+    expect(find.text('Open in browser'), findsOneWidget);
+  });
+
+  test('Site.urlError', () {
+    expect(Site.urlError('https://shop.example.com'), isNull);
+    expect(Site.urlError('  http://127.0.0.1:8000 '), isNull);
+    expect(Site.urlError(''), isNotNull);
+    expect(Site.urlError('https://'), isNotNull);
+    expect(Site.urlError('ftp://shop.example.com'), isNotNull);
+  });
+}

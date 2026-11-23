@@ -4,10 +4,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'support/app_services.dart';
 import 'support/preferences.dart';
 import 'support/repo_status.dart';
+import 'support/site.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
-import 'screens/settings_screen.dart';
 import 'widgets/deploy_dialog.dart';
+import 'widgets/site_dialog.dart';
 import 'widgets/site_card.dart';
 
 void main() {
@@ -104,7 +105,9 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  late List<SiteInfo> siteInfos = [];
+  /// The sites as saved, and what was read about each; both in the same order.
+  List<Site> sites = [];
+  List<SiteInfo> siteInfos = [];
   bool loaded = false;
 
   AppServices get services => widget.services;
@@ -116,44 +119,121 @@ class _MyHomePageState extends State<MyHomePage> {
     loadInfos();
   }
 
+  /// Reads the sites and everything about them again.
   void loadInfos() {
-    siteInfos = [];
-
-    services.settings.readSettings().then((sites) {
-      for (var site in sites) {
-        // The list shows the errors; mark them as handled so a site that is not
-        // reachable is not also reported as an uncaught error before that.
-        final systemInfo = services.fetchInfo(site.url)..ignore();
-        final repoStatus = site.repoPath.isEmpty
-            ? null
-            : (services.checkRepo(site.repoPath)..ignore());
-
-        final localVersions = site.repoPath.isEmpty
-            ? null
-            : (services.readLocal(RepoStatus.expandHome(site.repoPath))
-              ..ignore());
-
-        siteInfos.add(SiteInfo(
-          url: site.url,
-          name: site.displayName,
-          hasName: site.name.isNotEmpty,
-          systemInfo: systemInfo,
-          repoStatus: repoStatus,
-          localVersions: localVersions,
-          repoPath: site.repoPath.isEmpty
-              ? null
-              : RepoStatus.expandHome(site.repoPath),
-        ));
-      }
-      if (mounted) setState(() => loaded = true);
+    services.settings.readSettings().then((saved) {
+      if (!mounted) return;
+      setState(() {
+        sites = saved;
+        siteInfos = saved.map(_siteInfo).toList();
+        loaded = true;
+      });
     }).catchError((error, stackTrace) {
       if (mounted) setState(() => loaded = true);
     });
   }
 
-  /// The "Open in" menu of a site: the site in the browser, and its repository
-  /// in the installed apps if a local repository is set.
-  Widget _openInMenu(SiteInfo siteInfo) {
+  /// Starts reading a site's versions, repository status and local versions.
+  SiteInfo _siteInfo(Site site) {
+    // The list shows the errors; mark them as handled so a site that is not
+    // reachable is not also reported as an uncaught error before that.
+    final systemInfo = services.fetchInfo(site.url)..ignore();
+    final repoPath =
+        site.repoPath.isEmpty ? null : RepoStatus.expandHome(site.repoPath);
+
+    return SiteInfo(
+      url: site.url,
+      name: site.displayName,
+      hasName: site.name.isNotEmpty,
+      systemInfo: systemInfo,
+      repoStatus: repoPath == null
+          ? null
+          : (services.checkRepo(site.repoPath)..ignore()),
+      localVersions:
+          repoPath == null ? null : (services.readLocal(repoPath)..ignore()),
+      repoPath: repoPath,
+    );
+  }
+
+  void _showMessage(String text, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), action: action));
+  }
+
+  /// Saves the sites; a failure is shown, the list keeps the change.
+  Future<void> _save() async {
+    try {
+      await services.settings.writeSettings(sites);
+    } catch (e) {
+      if (mounted) _showMessage('Could not save the sites: $e');
+    }
+  }
+
+  Future<void> _addSite() async {
+    final site = await showSiteDialog(context);
+    if (site == null || !mounted) return;
+
+    setState(() {
+      sites.add(site);
+      siteInfos.add(_siteInfo(site));
+    });
+    await _save();
+  }
+
+  Future<void> _editSite(int index) async {
+    final site = await showSiteDialog(context, site: sites[index]);
+    if (site == null || !mounted) return;
+
+    setState(() {
+      sites[index] = site;
+      siteInfos[index] = _siteInfo(site);
+    });
+    await _save();
+  }
+
+  Future<void> _removeSite(int index) async {
+    final site = sites[index];
+    final info = siteInfos[index];
+
+    setState(() {
+      sites.removeAt(index);
+      siteInfos.removeAt(index);
+    });
+    await _save();
+    if (!mounted) return;
+
+    _showMessage(
+      'Removed ${info.name}',
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () {
+          if (!mounted) return;
+          final at = index.clamp(0, sites.length);
+          setState(() {
+            sites.insert(at, site);
+            siteInfos.insert(at, info);
+          });
+          _save();
+        },
+      ),
+    );
+  }
+
+  Future<void> _moveSite(int from, int to) async {
+    if (to == from) return;
+
+    setState(() {
+      sites.insert(to, sites.removeAt(from));
+      siteInfos.insert(to, siteInfos.removeAt(from));
+    });
+    await _save();
+  }
+
+  /// The menu of a site: edit or remove it, open the site in the browser, and its
+  /// repository in the installed apps if a local repository is set.
+  Widget _siteMenu(int index) {
+    final siteInfo = siteInfos[index];
     final repoPath = siteInfo.repoPath;
 
     PopupMenuItem<Future<void> Function()> item(
@@ -168,7 +248,7 @@ class _MyHomePageState extends State<MyHomePage> {
         );
 
     return PopupMenuButton<Future<void> Function()>(
-      tooltip: 'Open in …',
+      tooltip: 'Edit, remove or open the site',
       icon: const Icon(Icons.more_vert),
       onSelected: (open) async {
         try {
@@ -181,7 +261,10 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       },
       itemBuilder: (context) => [
-        item(Icons.public, 'Browser', () => _launchUrl(siteInfo.url)),
+        item(Icons.edit_outlined, 'Edit…', () => _editSite(index)),
+        item(Icons.delete_outline, 'Remove', () => _removeSite(index)),
+        const PopupMenuDivider(),
+        item(Icons.public, 'Open in browser', () => _launchUrl(siteInfo.url)),
         if (repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final (target, executable) in services.openInTargets)
@@ -214,11 +297,6 @@ class _MyHomePageState extends State<MyHomePage> {
     if (pushed && mounted) loadInfos();
   }
 
-  void _openSettings(BuildContext context) {
-    Navigator.push(context, SettingsScreen(settings: services.settings))
-        .then((value) => loadInfos());
-  }
-
   Widget _emptyState(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -231,12 +309,12 @@ class _MyHomePageState extends State<MyHomePage> {
           const SizedBox(height: 16),
           Text('No sites yet', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
-          const Text('Add your Symfony sites in the settings.'),
+          const Text('Add your Symfony sites to see their versions.'),
           const SizedBox(height: 24),
           FilledButton.icon(
-            onPressed: () => _openSettings(context),
-            icon: const Icon(Icons.settings),
-            label: const Text('Open settings'),
+            onPressed: _addSite,
+            icon: const Icon(Icons.add),
+            label: const Text('Add site'),
           ),
         ],
       ),
@@ -257,6 +335,11 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
         actions: [
+          IconButton(
+            onPressed: _addSite,
+            tooltip: 'Add site',
+            icon: const Icon(Icons.add),
+          ),
           if (widget.onSwitchTheme != null)
             IconButton(
               onPressed: widget.onSwitchTheme,
@@ -268,32 +351,47 @@ class _MyHomePageState extends State<MyHomePage> {
             tooltip: 'Refresh',
             icon: Icon(Icons.refresh),
           ),
-          IconButton(
-            onPressed: () => _openSettings(ctx),
-            tooltip: 'Settings',
-            icon: Icon(Icons.settings),
-          ),
         ],
       ),
       body: !loaded
           ? const Center(child: CircularProgressIndicator())
           : siteInfos.isEmpty
               ? _emptyState(ctx)
-              : ListView(
+              : ReorderableListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  children: [
-                    for (final siteInfo in siteInfos)
-                      SiteCard(
-                        site: siteInfo,
-                        menu: _openInMenu(siteInfo),
-                        onTap: siteInfo.repoPath == null
-                            ? null
-                            : () => _showChanges(siteInfo),
-                        onDeploy: siteInfo.repoPath == null
-                            ? null
-                            : (status) => _deploy(siteInfo, status),
+                  // The handle on the left moves a site; the rest of the card stays clickable.
+                  buildDefaultDragHandles: false,
+                  itemCount: siteInfos.length,
+                  onReorderItem: _moveSite,
+                  itemBuilder: (context, index) {
+                    final siteInfo = siteInfos[index];
+
+                    return SiteCard(
+                      // Stays with the site when it moves.
+                      key: ObjectKey(siteInfo),
+                      site: siteInfo,
+                      dragHandle: ReorderableDragStartListener(
+                        index: index,
+                        child: const MouseRegion(
+                          cursor: SystemMouseCursors.grab,
+                          child: Tooltip(
+                            message: 'Drag to move the site',
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(Icons.drag_indicator, size: 20),
+                            ),
+                          ),
+                        ),
                       ),
-                  ],
+                      menu: _siteMenu(index),
+                      onTap: siteInfo.repoPath == null
+                          ? null
+                          : () => _showChanges(siteInfo),
+                      onDeploy: siteInfo.repoPath == null
+                          ? null
+                          : (status) => _deploy(siteInfo, status),
+                    );
+                  },
                 ),
     );
   }

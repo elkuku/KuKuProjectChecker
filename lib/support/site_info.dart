@@ -65,7 +65,8 @@ class SystemInfo {
         SystemInfo(
           sfVersion: sfVersion,
           phpVersion: phpVersion,
-          dbPlatform: json['db_platform'] is String ? json['db_platform'] : null,
+          dbPlatform:
+              json['db_platform'] is String ? json['db_platform'] : null,
           dbVersion: json['db_version'] is String ? json['db_version'] : null,
           lastDeploy: LastDeploy.fromJson(json['last_deploy']),
         ),

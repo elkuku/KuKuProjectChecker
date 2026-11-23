@@ -39,13 +39,15 @@ void main() {
     // A repository with a GitHub-like "origin" and a Plesk-like deploy remote, both bare.
     for (final remote in ['origin', 'deploy']) {
       await Directory('${tmp.path}/$remote.git').create();
-      await git('${tmp.path}/$remote.git', ['init', '-q', '--bare', '-b', 'master']);
+      await git(
+          '${tmp.path}/$remote.git', ['init', '-q', '--bare', '-b', 'master']);
     }
     await Directory(repo).create();
     await git(repo, ['init', '-q', '-b', 'master']);
     await git(repo, ['remote', 'add', 'origin', '${tmp.path}/origin.git']);
     await git(repo, ['remote', 'add', 'elkuku.dev', '${tmp.path}/deploy.git']);
-    await git(repo, ['remote', 'add', 'elkuku.dev-https', 'https://example.com/repo.git']);
+    await git(repo,
+        ['remote', 'add', 'elkuku.dev-https', 'https://example.com/repo.git']);
     await commit(repo, 'one');
     await git(repo, ['push', '-q', '-u', 'origin', 'master']);
     await git(repo, ['push', '-q', 'elkuku.dev', 'master']);
@@ -93,7 +95,8 @@ void main() {
         'feature · no upstream · not on elkuku.dev');
   });
 
-  test('reports a missing folder and a folder that is not a repository', () async {
+  test('reports a missing folder and a folder that is not a repository',
+      () async {
     await expectLater(RepoStatus.check('${tmp.path}/missing'),
         throwsA(isA<RepoStatusException>()));
     await expectLater(

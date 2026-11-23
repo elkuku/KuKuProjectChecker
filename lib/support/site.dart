@@ -14,6 +14,22 @@ class Site {
     return host.isNotEmpty ? host : url;
   }
 
+  /// An error for a site address, or null if [text] is a full http(s) URL.
+  static String? urlError(String text) {
+    text = text.trim();
+    if (text.isEmpty || text == 'https://' || text == 'http://') {
+      return 'Enter the address of the site';
+    }
+    final uri = Uri.tryParse(text);
+    if (uri == null ||
+        !(uri.scheme == 'http' || uri.scheme == 'https') ||
+        uri.host.isEmpty) {
+      return 'Use a full address, like https://shop.example.com';
+    }
+
+    return null;
+  }
+
   /// Reads all formats: the old plain URL string and the {url, repoPath, name} map.
   factory Site.fromJson(dynamic json) {
     String text(String key) => json[key] is String ? json[key] : '';

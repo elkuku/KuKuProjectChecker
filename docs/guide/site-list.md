@@ -42,6 +42,12 @@ The line at the bottom shows the branch of the local repository and what is pend
 The **deploy remote** is the first remote that is not `origin` and not an HTTP(S) address,
 e.g. a Plesk or Dokku git remote.
 
+## Each site
+
+- **⋮⋮** on the left: drag the site to another place in the list.
+- **⋮** on the right: **Edit…** and **Remove** the site, and open it in the browser or the
+  repository in other apps, see [Managing sites](./settings) and [Open in …](./open-in).
+
 ## Buttons
 
 Every site with a local repository has two buttons. They show the number of files or commits
@@ -63,9 +69,9 @@ shows only after a `git fetch`.
 
 | Icon | |
 |---|---|
+| ＋ | Adds a site, see [Managing sites](./settings). |
 | ☀️ 🌙 Ⓐ | The theme: light, dark or following the system. Each click switches to the next one. |
 | ⟳ | Reads all versions and repositories again. |
-| ⚙ | The settings, see [Managing sites](./settings). |
 
 ::: tip
 The screenshots in this documentation follow its theme: switch it with the toggle at the top.

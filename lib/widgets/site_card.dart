@@ -9,8 +9,11 @@ import 'repo_status_text.dart';
 class SiteCard extends StatelessWidget {
   final SiteInfo site;
 
-  /// The "Open in" menu button.
+  /// The site's menu button: edit, remove, open in ….
   final Widget menu;
+
+  /// Shown on the left, to drag the site to another place in the list.
+  final Widget? dragHandle;
 
   /// Opens the changes of the local repository; null if there is none.
   final VoidCallback? onTap;
@@ -22,6 +25,7 @@ class SiteCard extends StatelessWidget {
     super.key,
     required this.site,
     required this.menu,
+    this.dragHandle,
     this.onTap,
     this.onDeploy,
   });
@@ -77,13 +81,14 @@ class SiteCard extends StatelessWidget {
   Widget _row(BuildContext context) {
     // Fixed column widths, so the columns line up from row to row.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
+      padding: EdgeInsets.fromLTRB(dragHandle == null ? 14 : 4, 6, 4, 6),
       child: Row(
         children: [
+          if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 6)],
           Expanded(child: _title(context)),
           const SizedBox(width: 12),
           SizedBox(
-            width: 290,
+            width: 310,
             child: Align(
               alignment: Alignment.centerLeft,
               child: _Versions(site: site, compact: true),
@@ -119,10 +124,11 @@ class SiteCard extends StatelessWidget {
   /// Narrow windows: everything below each other.
   Widget _stacked(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 4, 10),
+      padding: EdgeInsets.fromLTRB(dragHandle == null ? 14 : 4, 8, 4, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 6)],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,8 +343,8 @@ class _Versions extends StatelessWidget {
         return FutureBuilder<LocalVersions>(
           future: site.localVersions,
           builder: (context, local) => Wrap(
-            spacing: 6,
-            runSpacing: 6,
+            spacing: compact ? 4 : 6,
+            runSpacing: compact ? 4 : 6,
             children: _badges(context, info, local.data),
           ),
         );
@@ -348,13 +354,14 @@ class _Versions extends StatelessWidget {
 
   List<Widget> _badges(
       BuildContext context, SystemInfo info, LocalVersions? local) {
-    final dbName = switch (info.dbPlatform) {
-      'mariadb' => 'MariaDB',
-      'mysql' => 'MySQL',
-      'postgresql' => 'PostgreSQL',
-      'sqlite' => 'SQLite',
-      final other => other ?? 'DB',
-    };
+    String nameOf(String? platform) => switch (platform) {
+          'mariadb' => 'MariaDB',
+          'mysql' => 'MySQL',
+          'postgresql' => 'PostgreSQL',
+          'sqlite' => 'SQLite',
+          final other => other ?? 'DB',
+        };
+    final dbName = nameOf(info.dbPlatform);
 
     return [
       _VersionBadge(
@@ -362,31 +369,36 @@ class _Versions extends StatelessWidget {
         label: 'PHP',
         live: info.phpVersion,
         local: local?.php,
+        compact: compact,
         // Patch releases differ all the time between machines.
         maxParts: 2,
       ),
       _VersionBadge(
         icon: Icons.layers_outlined,
-        label: compact ? 'SF' : 'Symfony',
+        label: 'Symfony',
         live: info.sfVersion,
         local: local?.symfony,
+        compact: compact,
       ),
       if (info.dbVersion != null)
         _VersionBadge(
           icon: Icons.storage,
-          label: compact ? 'DB' : dbName,
+          label: dbName,
           live: info.dbVersion!,
+          compact: compact,
           local: local?.dbVersion == null
               ? null
-              : '${local!.dbVersion}${local.dbPlatform == info.dbPlatform ? '' : ' (${local.dbPlatform})'}',
+              : local!.dbPlatform == info.dbPlatform
+                  ? local.dbVersion
+                  : '${nameOf(local.dbPlatform)} ${local.dbVersion}',
           // A different database (e.g. MySQL locally, MariaDB live) never matches.
           matches: local?.dbVersion == null
               ? null
               : local!.dbPlatform == info.dbPlatform &&
                   LocalVersions.matches(local.dbVersion!, info.dbVersion!),
-          tooltipLabel: dbName,
         ),
-      if (info.lastDeploy != null) _DeployBadge(deploy: info.lastDeploy!),
+      if (info.lastDeploy != null)
+        _DeployBadge(deploy: info.lastDeploy!, compact: compact),
     ];
   }
 }
@@ -404,8 +416,8 @@ class _VersionBadge extends StatelessWidget {
   /// Overrides the comparison of [local] and [live].
   final bool? matches;
 
-  /// The name in the tooltip; [label] by default.
-  final String? tooltipLabel;
+  /// Only the icon and the number; the tooltip names it.
+  final bool compact;
 
   const _VersionBadge({
     required this.icon,
@@ -414,7 +426,7 @@ class _VersionBadge extends StatelessWidget {
     this.local,
     this.maxParts = 3,
     this.matches,
-    this.tooltipLabel,
+    this.compact = false,
   });
 
   @override
@@ -425,11 +437,13 @@ class _VersionBadge extends StatelessWidget {
     final same = hidden || local == null
         ? true
         : matches ?? LocalVersions.matches(local!, live, maxParts: maxParts);
-    final name = tooltipLabel ?? label;
-
     final tooltip = [
-      '$name $live on the site',
-      if (local != null) '$name $local locally',
+      '$label $live on the site',
+      // A local value with its own name (another database) needs no label.
+      if (local != null)
+        RegExp('^[A-Za-z]').hasMatch(local!)
+            ? '$local locally'
+            : '$label $local locally',
       if (!same) 'The site runs a different version than your local project.',
     ].join('\n');
 
@@ -437,10 +451,11 @@ class _VersionBadge extends StatelessWidget {
 
     return InfoBadge(
       icon: same ? icon : Icons.compare_arrows,
-      text: '$label $short',
+      text: compact ? short : '$label $short',
       tooltip: tooltip,
       background: same ? null : warning.$1,
       foreground: same ? null : warning.$2,
+      dense: compact,
     );
   }
 }
@@ -450,13 +465,17 @@ class _VersionBadge extends StatelessWidget {
 class _DeployBadge extends StatelessWidget {
   final LastDeploy deploy;
 
-  const _DeployBadge({required this.deploy});
+  /// "7m" instead of "7m ago".
+  final bool compact;
+
+  const _DeployBadge({required this.deploy, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final at = deploy.at?.toLocal();
-    final when = at == null ? 'unknown' : ago(at, DateTime.now());
+    final ago = at == null ? 'unknown' : _DeployBadge.ago(at, DateTime.now());
+    final when = compact ? ago.replaceFirst(' ago', '') : ago;
 
     final (background, foreground, state) = switch (deploy.status) {
       'ok' => (null, null, 'deployed'),
@@ -477,6 +496,7 @@ class _DeployBadge extends StatelessWidget {
       ].join('\n'),
       background: background,
       foreground: foreground,
+      dense: compact,
     );
   }
 
@@ -513,6 +533,9 @@ class InfoBadge extends StatelessWidget {
   final Color? foreground;
   final String? tooltip;
 
+  /// Less padding, for the row layout.
+  final bool dense;
+
   const InfoBadge({
     super.key,
     required this.icon,
@@ -520,6 +543,7 @@ class InfoBadge extends StatelessWidget {
     this.background,
     this.foreground,
     this.tooltip,
+    this.dense = false,
   });
 
   @override
@@ -533,7 +557,7 @@ class InfoBadge extends StatelessWidget {
     final fg = foreground ?? colors.onSecondaryContainer;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: EdgeInsets.symmetric(horizontal: dense ? 6 : 8, vertical: 3),
       decoration: BoxDecoration(
         color: background ?? colors.secondaryContainer,
         borderRadius: BorderRadius.circular(6),
@@ -542,7 +566,7 @@ class InfoBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 4),
+          SizedBox(width: dense ? 3 : 4),
           Text(
             text,
             style: Theme.of(context)
