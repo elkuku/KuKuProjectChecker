@@ -128,12 +128,18 @@ class _MyHomePageState extends State<MyHomePage> {
             ? null
             : (services.checkRepo(site.repoPath)..ignore());
 
+        final localVersions = site.repoPath.isEmpty
+            ? null
+            : (services.readLocal(RepoStatus.expandHome(site.repoPath))
+              ..ignore());
+
         siteInfos.add(SiteInfo(
           url: site.url,
           name: site.displayName,
           hasName: site.name.isNotEmpty,
           systemInfo: systemInfo,
           repoStatus: repoStatus,
+          localVersions: localVersions,
           repoPath: site.repoPath.isEmpty
               ? null
               : RepoStatus.expandHome(site.repoPath),

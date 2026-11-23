@@ -9,7 +9,21 @@ the state of that repository.
 ## Versions
 
 - **PHP** and **Symfony**: the versions the site reports, see [Site requirements](./site-requirements).
+- **Database** (🗄 MariaDB 12.3.4): the database server, if the site tells it.
+- **Last deploy** (🚀 3h ago): when the site was last deployed, if it tells it. Orange if that deploy
+  finished with errors, red if it didn't finish. Hover for the date.
 - **Not reachable**: the site didn't answer, or it has no `/system/info/` endpoint.
+
+### Live and local versions
+
+If a site has a local repository, the app compares its versions with the ones the project uses on
+this machine. A badge that differs turns **orange** with ⇄; hover over it to see both versions.
+
+| Badge | Local version from | Compared |
+|---|---|---|
+| PHP | the `php` on your PATH | major and minor, e.g. 8.5 |
+| Symfony | `symfony/http-kernel` in `composer.lock` | the full version, so an update that is not deployed yet shows |
+| Database | the database image in the docker compose files, e.g. `mariadb:12.3` or `postgres:16-alpine` | the platform, and the version as far as the image tag gives it: `16` matches 16.4 |
 
 ## Repository status
 

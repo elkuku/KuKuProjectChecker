@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'deployer.dart';
+import 'local_versions.dart';
 import 'open_in.dart';
 import 'repo_changes.dart';
 import 'repo_status.dart';
@@ -18,6 +19,9 @@ class AppServices {
   final Future<RepoStatus> Function(String repoPath) checkRepo;
   final RepoChanges Function(String repoPath) repoChanges;
 
+  /// Reads the versions a local repository uses, to compare them with the site's.
+  final Future<LocalVersions> Function(String repoPath) readLocal;
+
   /// Pushes a branch to the deploy remote.
   final PushFunction push;
 
@@ -29,16 +33,19 @@ class AppServices {
     Future<SystemInfo> Function(String url)? fetchInfo,
     Future<RepoStatus> Function(String repoPath)? checkRepo,
     RepoChanges Function(String repoPath)? repoChanges,
+    Future<LocalVersions> Function(String repoPath)? readLocal,
     PushFunction? push,
     List<(OpenInTarget, String)>? openInTargets,
   })  : settings = settings ?? Settings(),
         fetchInfo = fetchInfo ?? fetchSystemInfo,
         checkRepo = checkRepo ?? RepoStatus.check,
         repoChanges = repoChanges ?? RepoChanges.new,
+        readLocal = readLocal ?? LocalVersions.read,
         push = push ?? Deployer().push,
         openInTargets = openInTargets ?? OpenInTarget.available();
 
-  /// Reads the Symfony and PHP versions from the site's /system/info/ endpoint.
+  /// Reads the versions (and, if exposed, the database and last deploy) from the site's
+  /// /system/info/ endpoint.
   static Future<SystemInfo> fetchSystemInfo(String site) async {
     // A site saved with a trailing slash would give "//system/info/", which the sites don't route.
     final base = site.replaceFirst(RegExp(r'/+$'), '');

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../support/local_versions.dart';
 import '../support/repo_status.dart';
 import '../support/site_info.dart';
 import 'repo_status_text.dart';
@@ -82,7 +83,7 @@ class SiteCard extends StatelessWidget {
           Expanded(child: _title(context)),
           const SizedBox(width: 12),
           SizedBox(
-            width: 214,
+            width: 290,
             child: Align(
               alignment: Alignment.centerLeft,
               child: _Versions(site: site, compact: true),
@@ -294,11 +295,12 @@ class _CountButton extends StatelessWidget {
   }
 }
 
-/// The PHP and Symfony versions of a site as badges.
+/// The versions of a site as badges: PHP, Symfony and, if the site exposes them, its
+/// database and last deploy. A version that differs from the local repository is orange.
 class _Versions extends StatelessWidget {
   final SiteInfo site;
 
-  /// "SF" instead of "Symfony", for the row layout.
+  /// "SF" instead of "Symfony" and "DB" instead of the database name, for the row layout.
   final bool compact;
 
   const _Versions({required this.site, this.compact = false});
@@ -331,27 +333,185 @@ class _Versions extends StatelessWidget {
 
         final info = snapshot.data!;
 
-        return Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            InfoBadge(icon: Icons.code, text: 'PHP ${info.phpVersion}'),
-            InfoBadge(
-                icon: Icons.layers_outlined,
-                text: '${compact ? 'SF' : 'Symfony'} ${info.sfVersion}'),
-          ],
+        // The local versions come later or not at all; the badges show without them.
+        return FutureBuilder<LocalVersions>(
+          future: site.localVersions,
+          builder: (context, local) => Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _badges(context, info, local.data),
+          ),
         );
       },
     );
   }
+
+  List<Widget> _badges(
+      BuildContext context, SystemInfo info, LocalVersions? local) {
+    final dbName = switch (info.dbPlatform) {
+      'mariadb' => 'MariaDB',
+      'mysql' => 'MySQL',
+      'postgresql' => 'PostgreSQL',
+      'sqlite' => 'SQLite',
+      final other => other ?? 'DB',
+    };
+
+    return [
+      _VersionBadge(
+        icon: Icons.code,
+        label: 'PHP',
+        live: info.phpVersion,
+        local: local?.php,
+        // Patch releases differ all the time between machines.
+        maxParts: 2,
+      ),
+      _VersionBadge(
+        icon: Icons.layers_outlined,
+        label: compact ? 'SF' : 'Symfony',
+        live: info.sfVersion,
+        local: local?.symfony,
+      ),
+      if (info.dbVersion != null)
+        _VersionBadge(
+          icon: Icons.storage,
+          label: compact ? 'DB' : dbName,
+          live: info.dbVersion!,
+          local: local?.dbVersion == null
+              ? null
+              : '${local!.dbVersion}${local.dbPlatform == info.dbPlatform ? '' : ' (${local.dbPlatform})'}',
+          // A different database (e.g. MySQL locally, MariaDB live) never matches.
+          matches: local?.dbVersion == null
+              ? null
+              : local!.dbPlatform == info.dbPlatform &&
+                  LocalVersions.matches(local.dbVersion!, info.dbVersion!),
+          tooltipLabel: dbName,
+        ),
+      if (info.lastDeploy != null) _DeployBadge(deploy: info.lastDeploy!),
+    ];
+  }
 }
 
-/// A small rounded label with an icon.
+/// A version badge; orange when the [local] version differs from the [live] one.
+class _VersionBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String live;
+  final String? local;
+
+  /// Compare at most this many parts of the version (major, minor, patch).
+  final int maxParts;
+
+  /// Overrides the comparison of [local] and [live].
+  final bool? matches;
+
+  /// The name in the tooltip; [label] by default.
+  final String? tooltipLabel;
+
+  const _VersionBadge({
+    required this.icon,
+    required this.label,
+    required this.live,
+    this.local,
+    this.maxParts = 3,
+    this.matches,
+    this.tooltipLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // The numbers only, e.g. "12.3.4" for "12.3.4-MariaDB-deb12".
+    final short = RegExp(r'^\d+(\.\d+)*').stringMatch(live) ?? live;
+    final hidden = live == 'N/A';
+    final same = hidden || local == null
+        ? true
+        : matches ?? LocalVersions.matches(local!, live, maxParts: maxParts);
+    final name = tooltipLabel ?? label;
+
+    final tooltip = [
+      '$name $live on the site',
+      if (local != null) '$name $local locally',
+      if (!same) 'The site runs a different version than your local project.',
+    ].join('\n');
+
+    final warning = _warningColors(context);
+
+    return InfoBadge(
+      icon: same ? icon : Icons.compare_arrows,
+      text: '$label $short',
+      tooltip: tooltip,
+      background: same ? null : warning.$1,
+      foreground: same ? null : warning.$2,
+    );
+  }
+}
+
+/// When the site was last deployed, from its deploy log: orange if the run had errors,
+/// red if it didn't finish.
+class _DeployBadge extends StatelessWidget {
+  final LastDeploy deploy;
+
+  const _DeployBadge({required this.deploy});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final at = deploy.at?.toLocal();
+    final when = at == null ? 'unknown' : ago(at, DateTime.now());
+
+    final (background, foreground, state) = switch (deploy.status) {
+      'ok' => (null, null, 'deployed'),
+      'errors' => (
+          _warningColors(context).$1,
+          _warningColors(context).$2,
+          'finished with errors'
+        ),
+      _ => (colors.errorContainer, colors.onErrorContainer, 'did not finish'),
+    };
+
+    return InfoBadge(
+      icon: Icons.rocket_launch_outlined,
+      text: when,
+      tooltip: [
+        'Last deploy: $state',
+        if (at != null) _dateTime(at),
+      ].join('\n'),
+      background: background,
+      foreground: foreground,
+    );
+  }
+
+  static String _dateTime(DateTime d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  /// "just now", "5m ago", "3h ago", "2d ago", "4mo ago" or "1y ago".
+  static String ago(DateTime at, DateTime now) {
+    final d = now.difference(at);
+    return switch (d) {
+      _ when d.inMinutes < 1 => 'just now',
+      _ when d.inHours < 1 => '${d.inMinutes}m ago',
+      _ when d.inDays < 1 => '${d.inHours}h ago',
+      _ when d.inDays < 30 => '${d.inDays}d ago',
+      _ when d.inDays < 365 => '${d.inDays ~/ 30}mo ago',
+      _ => '${d.inDays ~/ 365}y ago',
+    };
+  }
+}
+
+/// Orange background and text for a badge, readable in light and dark mode.
+(Color, Color) _warningColors(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? (const Color(0xFF5C3B00), const Color(0xFFFFDDB3))
+        : (const Color(0xFFFFE0B2), const Color(0xFF6B3A00));
+
+/// A small rounded label with an icon, and an optional [tooltip].
 class InfoBadge extends StatelessWidget {
   final IconData icon;
   final String text;
   final Color? background;
   final Color? foreground;
+  final String? tooltip;
 
   const InfoBadge({
     super.key,
@@ -359,10 +519,16 @@ class InfoBadge extends StatelessWidget {
     required this.text,
     this.background,
     this.foreground,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
+    final badge = _badge(context);
+    return tooltip == null ? badge : Tooltip(message: tooltip!, child: badge);
+  }
+
+  Widget _badge(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final fg = foreground ?? colors.onSecondaryContainer;
 
