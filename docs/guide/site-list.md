@@ -43,8 +43,9 @@ The line at the bottom shows the branch of the local repository and what is pend
 | `no upstream` | The branch doesn't track a remote branch. |
 | `not on production` | The branch was never pushed to the deploy remote. |
 
-The **deploy remote** is the first remote that is not `origin` and not an HTTP(S) address,
-e.g. a Plesk or Dokku git remote.
+The **deploy remote** is the one chosen for the site in its **Edit…** dialog; on **Automatic**,
+the first remote that is not `origin`, not an HTTP(S) address and not on a code host like GitHub,
+e.g. a Plesk or Dokku git remote. See [Deploying](./deploy).
 
 ## Each site
 

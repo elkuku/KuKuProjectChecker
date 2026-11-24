@@ -10,6 +10,7 @@ import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
+import 'package:kuku_project_checker/widgets/site_dialog.dart';
 
 /// Settings in memory: what the app saves can be checked.
 class _MemorySettings extends Settings {
@@ -45,6 +46,13 @@ void main() {
   late _MemorySettings settings;
   late List<String> fetched;
 
+  /// The deploy remote choice of every repository check, in order.
+  late List<String> checkedWith;
+
+  /// What the folder chooser returns, and the folders it was opened in.
+  String? picked;
+  final pickedFrom = <String?>[];
+
   Future<void> showApp(WidgetTester tester, List<Site> sites,
       {double width = 1000}) async {
     tester.view.physicalSize = Size(width, 760);
@@ -53,6 +61,7 @@ void main() {
 
     settings = _MemorySettings(sites);
     fetched = [];
+    checkedWith = [];
     await tester.pumpWidget(MyApp(
       preferences: _Light(),
       services: AppServices(
@@ -61,10 +70,22 @@ void main() {
           fetched.add(url);
           return const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12');
         },
-        checkRepo: (_) async =>
-            const RepoStatus(branch: 'master', uncommitted: 0, unpushed: 0),
+        checkRepo: (_, deployRemote) async {
+          checkedWith.add(deployRemote);
+          return const RepoStatus(
+              branch: 'master', uncommitted: 0, unpushed: 0);
+        },
+        listRemotes: (_) async => const [
+          ('origin', 'git@github.com:me/shop.git'),
+          ('production', 'shop@server:~/git/shop.git'),
+          ('staging', 'shop@staging:~/git/shop.git'),
+        ],
         readLocal: (_) async => const LocalVersions(),
         openInTargets: const [],
+        pickFolder: (initial) async {
+          pickedFrom.add(initial);
+          return picked;
+        },
       ),
     ));
     await tester.pumpAndSettle();
@@ -79,6 +100,87 @@ void main() {
 
   TextField field(WidgetTester tester, String label) =>
       tester.widget<TextField>(find.widgetWithText(TextField, label));
+
+  testWidgets('choose the deploy remote of a site', (tester) async {
+    await showApp(tester, [_shop]);
+    expect(checkedWith, [Site.autoDeploy]);
+
+    await openMenu(tester, 'Shop');
+    await tester.tap(find.text('Edit…'));
+    await tester.pumpAndSettle();
+
+    // Automatic shows what it would pick; every remote is offered.
+    expect(find.text('Automatic (production)'), findsOneWidget);
+    await tester.tap(find.text('Automatic (production)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('staging  ·  shop@staging'), findsOneWidget);
+    expect(find.text('No deploys'), findsOneWidget);
+
+    await tester.tap(find.textContaining('staging  ·  shop@staging').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(settings.sites.single.deployRemote, 'staging');
+    expect(checkedWith, [Site.autoDeploy, 'staging'],
+        reason: 'The site is checked again with the chosen remote');
+  });
+
+  testWidgets('choose the repository folder', (tester) async {
+    final home = Platform.environment['HOME']!;
+    await showApp(tester, [_blog]);
+
+    await openMenu(tester, 'Blog');
+    await tester.tap(find.text('Edit…'));
+    await tester.pumpAndSettle();
+
+    // Cancelled: the field stays as it is.
+    picked = null;
+    await tester.tap(find.byTooltip('Choose the folder'));
+    await tester.pumpAndSettle();
+    expect(field(tester, 'Local repository').controller!.text, '');
+
+    // A folder in the home folder is shown with ~, and the deploy remote appears.
+    picked = '$home/repos/blog';
+    await tester.tap(find.byTooltip('Choose the folder'));
+    await tester.pumpAndSettle();
+    expect(field(tester, 'Local repository').controller!.text, '~/repos/blog');
+    expect(find.text('Deploy remote'), findsOneWidget);
+
+    // Other folders stay as they are.
+    picked = '/srv/blog';
+    await tester.tap(find.byTooltip('Choose the folder'));
+    await tester.pumpAndSettle();
+    expect(field(tester, 'Local repository').controller!.text, '/srv/blog');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(settings.sites.single.repoPath, '/srv/blog');
+    picked = null;
+  });
+
+  test('writes the home folder as ~', () {
+    final home = Platform.environment['HOME']!;
+
+    expect(collapseHome('$home/repos/shop'), '~/repos/shop');
+    expect(collapseHome(home), '~');
+    expect(collapseHome('${home}x/shop'), '${home}x/shop');
+    expect(collapseHome('/srv/shop'), '/srv/shop');
+  });
+
+  testWidgets('no deploy remote choice without a repository', (tester) async {
+    await showApp(tester, [_blog]);
+
+    await openMenu(tester, 'Blog');
+    await tester.tap(find.text('Edit…'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Deploy remote'), findsNothing);
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Local repository'), '~/repos/blog');
+    await tester.pumpAndSettle();
+    expect(find.text('Deploy remote'), findsOneWidget);
+  });
 
   testWidgets('an empty list offers to add a site', (tester) async {
     await showApp(tester, []);

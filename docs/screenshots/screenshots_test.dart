@@ -124,7 +124,8 @@ AppServices sampleServices() => AppServices(
       settings: SampleSettings(),
       fetchInfo: (url) async =>
           versions[url] ?? (throw const SocketException('Connection refused')),
-      checkRepo: (path) async => statuses[path]!,
+      checkRepo: (path, _) async => statuses[path]!,
+      listRemotes: (_) async => const [],
       repoChanges: SampleChanges.new,
       push: (repoPath, remote, branch, onOutput) async {
         // Like a push to a Plesk repository: ssh's notice, curl's progress table

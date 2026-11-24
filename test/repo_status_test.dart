@@ -95,6 +95,85 @@ void main() {
         'feature · no upstream · not on elkuku.dev');
   });
 
+  test('skips remotes on code hosts', () async {
+    // Like web-atacames, whose code remote is called "github" and uses an SSH URL:
+    // every remote that sorts before "production" must be skipped.
+    await git(repo, ['remote', 'rename', 'elkuku.dev', 'production']);
+    await git(
+        repo, ['remote', 'add', 'github', 'git@github.com:someone/repo.git']);
+    await git(repo,
+        ['remote', 'add', 'codeberg', 'git@codeberg.org:someone/repo.git']);
+    await git(repo, [
+      'remote',
+      'add',
+      'backup',
+      'ssh://git@github.com/someone/repo-backup.git'
+    ]);
+
+    final status = await RepoStatus.check(repo);
+
+    expect(status.deployRemote, 'production');
+    expect(status.undeployed, 0);
+  });
+
+  test('the upstream can be the deploy remote', () async {
+    // Like web-atacames, whose main branch tracks the deploy remote.
+    await git(repo, ['branch', '-u', 'elkuku.dev/master']);
+
+    final status = await RepoStatus.check(repo);
+
+    expect(status.deployRemote, 'elkuku.dev');
+    expect(status.unpushed, 0);
+  });
+
+  test('the site chooses the deploy remote, or no deploys', () async {
+    await git(repo, ['remote', 'add', 'staging', '${tmp.path}/deploy.git']);
+
+    final chosen = await RepoStatus.check(repo, deployRemote: 'staging');
+    expect(chosen.deployRemote, 'staging');
+    // Never fetched from staging, so its branch is unknown.
+    expect(chosen.undeployed, isNull);
+
+    // Even a remote the automatic choice skips can be chosen.
+    expect((await RepoStatus.check(repo, deployRemote: 'origin')).deployRemote,
+        'origin');
+
+    final none = await RepoStatus.check(repo, deployRemote: Site.noDeploy);
+    expect(none.deployRemote, isNull);
+    expect(none.isClean, isTrue);
+    expect(describeRepoStatus(none), 'master · clean');
+
+    // A chosen remote that no longer exists means no deploys.
+    expect((await RepoStatus.check(repo, deployRemote: 'gone')).deployRemote,
+        isNull);
+  });
+
+  test('lists the remotes and picks one automatically', () async {
+    final remotes = await RepoStatus.remotes(repo);
+
+    expect([for (final (name, _) in remotes) name],
+        ['elkuku.dev', 'elkuku.dev-https', 'origin']);
+    expect(RepoStatus.pickDeployRemote(remotes), 'elkuku.dev');
+    expect(await RepoStatus.remotes('${tmp.path}/missing'), isEmpty);
+    expect(
+        RepoStatus.pickDeployRemote(const [
+          ('origin', 'git@example.com:a.git'),
+          ('github', 'git@github.com:a/b.git'),
+          ('web', 'https://example.com/a.git'),
+        ]),
+        isNull);
+  });
+
+  test('reads the host of a git URL', () {
+    expect(RepoStatus.hostOf('git@github.com:elkuku/x.git'), 'github.com');
+    expect(RepoStatus.hostOf('user@minicc.elkuku.dev:~/git/minicc.git'),
+        'minicc.elkuku.dev');
+    expect(RepoStatus.hostOf('ssh://git@GitLab.com:22/a/b.git'), 'gitlab.com');
+    expect(RepoStatus.hostOf('server:repo.git'), 'server');
+    expect(RepoStatus.hostOf('/srv/git/repo.git'), isNull);
+    expect(RepoStatus.hostOf('../deploy.git'), isNull);
+  });
+
   test('reports a missing folder and a folder that is not a repository',
       () async {
     await expectLater(RepoStatus.check('${tmp.path}/missing'),
@@ -130,5 +209,22 @@ void main() {
     expect(current.repoPath, '~/repos/b');
     expect(current.toJson(),
         {'name': '', 'url': 'https://b.example', 'repoPath': '~/repos/b'});
+    expect(current.deployRemote, Site.autoDeploy);
+  });
+
+  test('saves a chosen deploy remote', () {
+    final site = Site.fromJson({
+      'url': 'https://b.example',
+      'repoPath': '~/repos/b',
+      'deployRemote': 'production',
+    });
+
+    expect(site.deployRemote, 'production');
+    expect(site.toJson()['deployRemote'], 'production');
+    expect(Site.fromJson(site.toJson()).deployRemote, 'production');
+    expect(
+        const Site(url: 'https://b.example', deployRemote: Site.noDeploy)
+            .toJson()['deployRemote'],
+        '-');
   });
 }

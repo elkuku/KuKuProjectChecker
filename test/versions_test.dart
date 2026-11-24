@@ -222,7 +222,7 @@ services:
         services: AppServices(
           settings: _OneSite(),
           fetchInfo: (_) async => info,
-          checkRepo: (_) async => _clean,
+          checkRepo: (_, __) async => _clean,
           readLocal: (_) async => local ?? const LocalVersions(),
           openInTargets: const [],
           push: (a, b, c, d) async => 0,

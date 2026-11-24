@@ -4,11 +4,15 @@ A site whose local repository has a **deploy remote** can be deployed from the a
 current branch to that remote, and the server (e.g. Plesk with automatic deployment) deploys the
 new version.
 
-The deploy remote is the first git remote that is not `origin` and not an HTTP(S) address, e.g.:
+Choose the deploy remote in the site's **Edit…** dialog, see [Managing sites](./settings). Left on
+**Automatic**, the app picks the first git remote that is not `origin`, not an HTTP(S) address and
+not on GitHub, GitLab, Bitbucket or Codeberg, e.g.:
 
 ```bash
 git remote add production user@server:~/git/shop.git
 ```
+
+**No deploys** hides deploying for a site, e.g. one that is deployed some other way.
 
 ## Deploy
 

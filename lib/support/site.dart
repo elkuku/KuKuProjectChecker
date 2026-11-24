@@ -4,7 +4,23 @@ class Site {
   final String repoPath;
   final String name;
 
-  const Site({required this.url, this.repoPath = '', this.name = ''});
+  /// Which git remote Deploy pushes to: [autoDeploy] (the default) lets the app pick one,
+  /// [noDeploy] turns deploying off, anything else is the name of a remote.
+  final String deployRemote;
+
+  /// [deployRemote] value: the app picks the deploy remote, see RepoStatus.pickDeployRemote.
+  static const autoDeploy = '';
+
+  /// [deployRemote] value: the site is not deployed from the app. Git doesn't allow this
+  /// as a remote name.
+  static const noDeploy = '-';
+
+  const Site({
+    required this.url,
+    this.repoPath = '',
+    this.name = '',
+    this.deployRemote = autoDeploy,
+  });
 
   /// The name, or the URL's host if no name is set.
   String get displayName {
@@ -30,7 +46,8 @@ class Site {
     return null;
   }
 
-  /// Reads all formats: the old plain URL string and the {url, repoPath, name} map.
+  /// Reads all formats: the old plain URL string and the {url, repoPath, name, deployRemote}
+  /// map.
   factory Site.fromJson(dynamic json) {
     String text(String key) => json[key] is String ? json[key] : '';
 
@@ -40,11 +57,17 @@ class Site {
           url: url,
           repoPath: text('repoPath'),
           name: text('name'),
+          deployRemote: text('deployRemote'),
         ),
       _ => throw const FormatException('Invalid site in settings.'),
     };
   }
 
-  Map<String, String> toJson() =>
-      {'name': name, 'url': url, 'repoPath': repoPath};
+  /// The deploy remote is only written when it is not automatic.
+  Map<String, String> toJson() => {
+        'name': name,
+        'url': url,
+        'repoPath': repoPath,
+        if (deployRemote != autoDeploy) 'deployRemote': deployRemote,
+      };
 }

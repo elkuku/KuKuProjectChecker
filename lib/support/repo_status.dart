@@ -13,7 +13,7 @@ class RepoStatus {
   /// Commits not on the upstream branch, or null if the branch has no upstream.
   final int? unpushed;
 
-  /// The deploy remote: the first remote other than "origin" that is not an HTTP(S) URL.
+  /// The deploy remote, see [findDeployRemote].
   final String? deployRemote;
 
   /// Commits not on the deploy remote's branch, or null if there is no such branch.
@@ -33,7 +33,10 @@ class RepoStatus {
       unpushed == 0 &&
       (deployRemote == null || undeployed == 0);
 
-  static Future<RepoStatus> check(String repoPath) async {
+  /// Checks the repository at [repoPath]. [deployRemote] is the site's choice:
+  /// Site.autoDeploy (''), Site.noDeploy ('-') or the name of a remote.
+  static Future<RepoStatus> check(String repoPath,
+      {String deployRemote = ''}) async {
     final path = expandHome(repoPath);
 
     if (!await Directory(path).exists()) {
@@ -51,33 +54,75 @@ class RepoStatus {
 
     final unpushed = await _count(path, '@{upstream}..HEAD');
 
-    final deployRemote = await _findDeployRemote(path);
-    final undeployed = deployRemote == null
-        ? null
-        : await _count(path, '$deployRemote/$branch..HEAD');
+    final remoteList = await remotes(path);
+    final names = [for (final (name, _) in remoteList) name];
+    final chosen = switch (deployRemote) {
+      '' => pickDeployRemote(remoteList),
+      '-' => null,
+      // A chosen remote that no longer exists (renamed, removed) means no deploys.
+      _ => names.contains(deployRemote) ? deployRemote : null,
+    };
+    final undeployed =
+        chosen == null ? null : await _count(path, '$chosen/$branch..HEAD');
 
     return RepoStatus(
       branch: branch,
       uncommitted: uncommitted,
       unpushed: unpushed,
-      deployRemote: deployRemote,
+      deployRemote: chosen,
       undeployed: undeployed,
     );
   }
 
-  static Future<String?> _findDeployRemote(String path) async {
-    final remotes = (await _git(path, ['remote']) ?? '')
-        .split('\n')
-        .where((remote) => remote.isNotEmpty && remote != 'origin');
+  /// The remotes of the repository at [repoPath] as (name, URL), in git's order;
+  /// empty if it isn't a repository.
+  static Future<List<(String, String)>> remotes(String repoPath) async {
+    final path = expandHome(repoPath);
+    if (!await Directory(path).exists()) return const [];
 
-    for (final remote in remotes) {
-      final url = await _git(path, ['remote', 'get-url', remote]) ?? '';
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        return remote;
-      }
+    final list = <(String, String)>[];
+    for (final name in (await _git(path, ['remote']) ?? '').split('\n')) {
+      if (name.isEmpty) continue;
+      list.add((name, await _git(path, ['remote', 'get-url', name]) ?? ''));
+    }
+
+    return list;
+  }
+
+  /// Hosts where code is kept, never deployed to.
+  static const codeHosts = {
+    'github.com',
+    'gitlab.com',
+    'bitbucket.org',
+    'codeberg.org',
+  };
+
+  /// The remote the app picks when a site's deploy remote is automatic: the first that is
+  /// not "origin", not an HTTP(S) URL and not on a code host like GitHub ([codeHosts]).
+  /// Null if there is none.
+  static String? pickDeployRemote(List<(String, String)> remotes) {
+    for (final (name, url) in remotes) {
+      if (name == 'origin') continue;
+      if (url.startsWith('http://') || url.startsWith('https://')) continue;
+      if (codeHosts.contains(hostOf(url))) continue;
+
+      return name;
     }
 
     return null;
+  }
+
+  /// The host of a git URL: "ssh://user@host:22/path", "user@host:path" or "host:path";
+  /// null for a local path.
+  static String? hostOf(String url) {
+    if (url.contains('://')) {
+      final host = Uri.tryParse(url)?.host;
+      return host == null || host.isEmpty ? null : host.toLowerCase();
+    }
+
+    // scp-like syntax: [user@]host:path, where the host has no slash.
+    final match = RegExp(r'^(?:[^@/]+@)?([^:/]+):').firstMatch(url);
+    return match?.group(1)?.toLowerCase();
   }
 
   static Future<int?> _count(String path, String range) async {

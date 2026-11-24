@@ -199,7 +199,7 @@ void main() {
           settings: _OneSite(),
           fetchInfo: (_) async =>
               const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
-          checkRepo: (_) async => status,
+          checkRepo: (_, __) async => status,
           openInTargets: const [],
           push: (a, b, c, d) async => 0,
         ),

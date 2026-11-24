@@ -148,7 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
       systemInfo: systemInfo,
       repoStatus: repoPath == null
           ? null
-          : (services.checkRepo(site.repoPath)..ignore()),
+          : (services.checkRepo(site.repoPath, site.deployRemote)..ignore()),
       localVersions:
           repoPath == null ? null : (services.readLocal(repoPath)..ignore()),
       repoPath: repoPath,
@@ -171,7 +171,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _addSite() async {
-    final site = await showSiteDialog(context);
+    final site = await showSiteDialog(context,
+        listRemotes: services.listRemotes, pickFolder: services.pickFolder);
     if (site == null || !mounted) return;
 
     setState(() {
@@ -182,7 +183,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _editSite(int index) async {
-    final site = await showSiteDialog(context, site: sites[index]);
+    final site = await showSiteDialog(context,
+        site: sites[index],
+        listRemotes: services.listRemotes,
+        pickFolder: services.pickFolder);
     if (site == null || !mounted) return;
 
     setState(() {
