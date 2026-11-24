@@ -160,6 +160,53 @@ services:
       expect(local.dbPlatform, 'mariadb');
       expect(local.dbVersion, '12.3');
     });
+
+    test('finds the project in a subfolder', () async {
+      final dir = await Directory.systemTemp.createTemp('local_versions');
+      addTearDown(() => dir.delete(recursive: true));
+      // An Android app next to the Symfony project in web/, like AgentTools.
+      await Directory('${dir.path}/app').create();
+      await File('${dir.path}/app/build.gradle.kts').writeAsString('');
+      await Directory('${dir.path}/web').create();
+      await File('${dir.path}/web/composer.json').writeAsString('{}');
+      await File('${dir.path}/web/composer.lock').writeAsString(jsonEncode({
+        'packages': [
+          {'name': 'symfony/http-kernel', 'version': 'v8.1.11'}
+        ]
+      }));
+      await File('${dir.path}/web/compose.yaml').writeAsString(
+          'services:\n  database:\n    image: postgres:\${POSTGRES_VERSION:-17}-alpine\n');
+
+      expect(await LocalVersions.projectFolder(dir.path), '${dir.path}/web');
+
+      final local =
+          await LocalVersions.read(dir.path, phpVersion: () async => null);
+
+      expect(local.symfony, '8.1.11');
+      expect(local.dbPlatform, 'postgresql');
+      expect(local.dbVersion, '17');
+    });
+
+    test('prefers the repository itself over a subfolder', () async {
+      final dir = await Directory.systemTemp.createTemp('local_versions');
+      addTearDown(() => dir.delete(recursive: true));
+      await File('${dir.path}/composer.json').writeAsString('{}');
+      await Directory('${dir.path}/tools').create();
+      await File('${dir.path}/tools/composer.json').writeAsString('{}');
+
+      expect(await LocalVersions.projectFolder(dir.path), dir.path);
+    });
+
+    test('skips vendor and falls back to the repository', () async {
+      final dir = await Directory.systemTemp.createTemp('local_versions');
+      addTearDown(() => dir.delete(recursive: true));
+      await Directory('${dir.path}/vendor').create();
+      await File('${dir.path}/vendor/composer.json').writeAsString('{}');
+
+      expect(await LocalVersions.projectFolder(dir.path), dir.path);
+      expect(await LocalVersions.projectFolder('${dir.path}/missing'),
+          '${dir.path}/missing');
+    });
   });
 
   group('version badges', () {

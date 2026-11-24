@@ -35,18 +35,24 @@ class LocalVersions {
   /// [phpVersion] gives the local PHP version; by default it asks the `php` binary.
   static Future<LocalVersions> read(String repoPath,
       {Future<String?> Function()? phpVersion}) async {
+    // The Symfony project may be in a subfolder; the compose files are read from the
+    // repository and then from that subfolder (the subfolder's last, so they win).
+    final project = await projectFolder(repoPath);
+
     String? symfony;
     try {
       symfony =
-          symfonyFromLock(await File('$repoPath/composer.lock').readAsString());
+          symfonyFromLock(await File('$project/composer.lock').readAsString());
     } on IOException {
       symfony = null;
     }
 
     final composeTexts = <String>[];
-    for (final name in composeFiles) {
-      final file = File('$repoPath/$name');
-      if (await file.exists()) composeTexts.add(await file.readAsString());
+    for (final folder in {repoPath, project}) {
+      for (final name in composeFiles) {
+        final file = File('$folder/$name');
+        if (await file.exists()) composeTexts.add(await file.readAsString());
+      }
     }
     final database = databaseFromCompose(composeTexts);
 
@@ -56,6 +62,34 @@ class LocalVersions {
       dbPlatform: database?.$1,
       dbVersion: database?.$2,
     );
+  }
+
+  /// Folders that never hold the project itself.
+  static const _skippedFolders = {'vendor', 'node_modules'};
+
+  /// The folder of the PHP project in the repository at [repoPath]: the repository itself
+  /// if it has a composer.json, else the first direct subfolder (by name) that has one,
+  /// e.g. web/ when the repository also holds an Android app. Falls back to [repoPath].
+  static Future<String> projectFolder(String repoPath) async {
+    if (await File('$repoPath/composer.json').exists()) return repoPath;
+
+    final candidates = <String>[];
+    try {
+      await for (final entry in Directory(repoPath).list(followLinks: false)) {
+        final name = entry.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+        if (entry is Directory &&
+            !name.startsWith('.') &&
+            !_skippedFolders.contains(name) &&
+            await File('${entry.path}/composer.json').exists()) {
+          candidates.add(entry.path);
+        }
+      }
+    } on FileSystemException {
+      return repoPath;
+    }
+
+    candidates.sort();
+    return candidates.firstOrNull ?? repoPath;
   }
 
   static Future<String?>? _php;

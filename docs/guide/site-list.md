@@ -25,6 +25,10 @@ this machine. A badge that differs turns **orange** with ⇄; hover over it to s
 | Symfony | `symfony/http-kernel` in `composer.lock` | the full version, so an update that is not deployed yet shows |
 | Database | the database image in the docker compose files, e.g. `mariadb:12.3` or `postgres:16-alpine` | the platform, and the version as far as the image tag gives it: `16` matches 16.4 |
 
+The Symfony project doesn't have to be at the top of the repository: if the repository has no
+`composer.json`, the app uses the first folder directly inside it that has one, e.g. `web/` in a
+repository that also holds an Android app. The compose files are read from both places.
+
 ## Repository status
 
 The line at the bottom shows the branch of the local repository and what is pending:
