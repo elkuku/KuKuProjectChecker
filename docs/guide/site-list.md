@@ -13,6 +13,17 @@ the state of that repository.
 - **Last deploy** (🚀 3h ago): when the site was last deployed, if it tells it. Orange if that deploy
   finished with errors, red if it didn't finish. Hover for the date.
 - **Not reachable**: the site didn't answer, or it has no `/system/info/` endpoint.
+- **Dev site** (🧪 dev 12m), if the site has a [dev site URL](./settings): when the dev site last
+  deployed itself. Hover for its versions and dates.
+
+| Dev badge | Meaning |
+|---|---|
+| 🧪 dev 12m | The last deploy went fine and is newer than the newest commit of the upstream branch (e.g. `origin/master`) |
+| 🧪 dev behind (orange) | The upstream branch has a newer commit than the last deploy: the webhook didn't fire, or the deploy is still running |
+| 🧪 dev errors (orange) / dev unfinished (red) | The last deploy finished with errors / didn't finish |
+| 🧪 dev offline (red) | The dev site didn't answer |
+
+The upstream branch is compared as of your last fetch or push, like the repository status below.
 
 ### Live and local versions
 

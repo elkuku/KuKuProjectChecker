@@ -399,7 +399,114 @@ class _Versions extends StatelessWidget {
         ),
       if (info.lastDeploy != null)
         _DeployBadge(deploy: info.lastDeploy!, compact: compact),
+      if (site.devInfo != null)
+        DevBadge(
+          url: site.devUrl!,
+          info: site.devInfo!,
+          upstreamTime: site.upstreamTime,
+          compact: compact,
+        ),
     ];
+  }
+}
+
+/// The dev site of a site: whether its last deploy (from the upstream branch, e.g. by a
+/// webhook) went well and includes the newest upstream commit.
+class DevBadge extends StatelessWidget {
+  final String url;
+  final Future<SystemInfo> info;
+
+  /// The time of the newest upstream commit; null without a local repository.
+  final Future<DateTime?>? upstreamTime;
+  final bool compact;
+
+  const DevBadge({
+    super.key,
+    required this.url,
+    required this.info,
+    this.upstreamTime,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<SystemInfo>(
+      future: info,
+      builder: (context, snapshot) {
+        final colors = Theme.of(context).colorScheme;
+        final error = (colors.errorContainer, colors.onErrorContainer);
+
+        if (snapshot.hasError) {
+          return InfoBadge(
+            icon: Icons.science_outlined,
+            text: 'dev offline',
+            tooltip: 'Dev site $url\nNot reachable',
+            background: error.$1,
+            foreground: error.$2,
+            dense: compact,
+          );
+        }
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final dev = snapshot.data!;
+        return FutureBuilder<DateTime?>(
+          future: upstreamTime,
+          builder: (context, upstream) {
+            final deploy = dev.lastDeploy;
+            final at = deploy?.at?.toLocal();
+            final state = DevState.of(deploy, upstream.data);
+            final ago =
+                at == null ? null : _DeployBadge.ago(at, DateTime.now());
+
+            final (text, colorsOf, meaning) = switch (state) {
+              DevState.upToDate => (
+                  'dev ${ago?.replaceFirst(' ago', '') ?? ''}'.trim(),
+                  null,
+                  'Up to date with the upstream branch'
+                ),
+              DevState.behind => (
+                  'dev behind',
+                  _warningColors(context),
+                  'The upstream branch has newer commits than the last deploy: '
+                      'the deploy didn\'t run or is still running'
+                ),
+              DevState.errors => (
+                  'dev errors',
+                  _warningColors(context),
+                  'The last deploy finished with errors'
+                ),
+              DevState.unfinished => (
+                  'dev unfinished',
+                  error,
+                  'The last deploy did not finish'
+                ),
+              DevState.unknown => (
+                  'dev',
+                  null,
+                  'The dev site doesn\'t report its deploys'
+                ),
+            };
+
+            return InfoBadge(
+              icon: Icons.science_outlined,
+              text: text,
+              tooltip: [
+                'Dev site $url',
+                meaning,
+                'Symfony ${dev.sfVersion} · PHP ${dev.phpVersion}'
+                    '${dev.dbVersion == null ? '' : ' · ${dev.dbPlatform ?? 'DB'} ${dev.dbVersion}'}',
+                if (at != null) 'Last deploy: ${_DeployBadge._dateTime(at)}',
+                if (upstream.data != null)
+                  'Newest upstream commit: ${_DeployBadge._dateTime(upstream.data!.toLocal())}',
+              ].join('\n'),
+              background: colorsOf?.$1,
+              foreground: colorsOf?.$2,
+              dense: compact,
+            );
+          },
+        );
+      },
+    );
   }
 }
 

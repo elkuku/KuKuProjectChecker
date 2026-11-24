@@ -152,6 +152,13 @@ class _MyHomePageState extends State<MyHomePage> {
       localVersions:
           repoPath == null ? null : (services.readLocal(repoPath)..ignore()),
       repoPath: repoPath,
+      devUrl: site.devUrl.isEmpty ? null : site.devUrl,
+      devInfo: site.devUrl.isEmpty
+          ? null
+          : (services.fetchInfo(site.devUrl)..ignore()),
+      upstreamTime: site.devUrl.isEmpty || repoPath == null
+          ? null
+          : (services.upstreamTime(repoPath)..ignore()),
     );
   }
 
@@ -269,6 +276,9 @@ class _MyHomePageState extends State<MyHomePage> {
         item(Icons.delete_outline, 'Remove', () => _removeSite(index)),
         const PopupMenuDivider(),
         item(Icons.public, 'Open in browser', () => _launchUrl(siteInfo.url)),
+        if (siteInfo.devUrl != null)
+          item(Icons.science_outlined, 'Open dev site',
+              () => _launchUrl(siteInfo.devUrl!)),
         if (repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final (target, executable) in services.openInTargets)

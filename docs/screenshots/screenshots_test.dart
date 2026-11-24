@@ -22,7 +22,11 @@ import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
 const sites = [
-  Site(name: 'Shop', url: 'https://shop.example.com', repoPath: '~/repos/shop'),
+  Site(
+      name: 'Shop',
+      url: 'https://shop.example.com',
+      repoPath: '~/repos/shop',
+      devUrl: 'https://dev.shop.example.com'),
   Site(name: 'Blog', url: 'https://blog.example.com', repoPath: '~/repos/blog'),
   Site(url: 'https://docs.example.com'),
   Site(
@@ -38,6 +42,13 @@ final versions = {
       const SystemInfo(sfVersion: '7.4.23', phpVersion: '8.4.15'),
   'https://docs.example.com':
       const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
+  // The dev site deployed itself 12 minutes ago, after the newest commit on GitHub.
+  'https://dev.shop.example.com': SystemInfo(
+      sfVersion: '8.1.11',
+      phpVersion: '8.5.12',
+      lastDeploy: LastDeploy(
+          at: DateTime.now().subtract(const Duration(minutes: 12)),
+          status: 'ok')),
 };
 
 final statuses = {
@@ -126,6 +137,8 @@ AppServices sampleServices() => AppServices(
           versions[url] ?? (throw const SocketException('Connection refused')),
       checkRepo: (path, _) async => statuses[path]!,
       // Like a typical project: the code on GitHub, the deploys to a Plesk repository.
+      upstreamTime: (_) async =>
+          DateTime.now().subtract(const Duration(minutes: 15)),
       listRemotes: (_) async => const [
         ('origin', 'git@github.com:example/shop.git'),
         ('production', 'shop@server.example.com:~/git/shop.git'),

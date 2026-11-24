@@ -56,6 +56,11 @@ class _SiteDialogState extends State<_SiteDialog> {
   late final url = TextEditingController(text: widget.site?.url ?? 'https://');
   late final repoPath =
       TextEditingController(text: widget.site?.repoPath ?? '');
+  late final devUrl = TextEditingController(text: widget.site?.devUrl ?? '');
+
+  /// An error for the optional dev site address, or null if it is empty or valid.
+  String? get devUrlError =>
+      devUrl.text.trim().isEmpty ? null : Site.urlError(devUrl.text);
 
   /// Site.autoDeploy, Site.noDeploy or a remote name.
   late String deployRemote = widget.site?.deployRemote ?? Site.autoDeploy;
@@ -92,11 +97,12 @@ class _SiteDialogState extends State<_SiteDialog> {
     name.dispose();
     url.dispose();
     repoPath.dispose();
+    devUrl.dispose();
     super.dispose();
   }
 
   void _save() {
-    if (Site.urlError(url.text) != null) {
+    if (Site.urlError(url.text) != null || devUrlError != null) {
       setState(() => showErrors = true);
       return;
     }
@@ -106,6 +112,7 @@ class _SiteDialogState extends State<_SiteDialog> {
       url: url.text.trim(),
       repoPath: repoPath.text.trim(),
       deployRemote: deployRemote,
+      devUrl: devUrl.text.trim(),
     ));
   }
 
@@ -226,6 +233,22 @@ class _SiteDialogState extends State<_SiteDialog> {
               const SizedBox(height: 12),
               _deployRemoteField(),
             ],
+            const SizedBox(height: 12),
+            ListenableBuilder(
+              listenable: devUrl,
+              builder: (context, _) => TextField(
+                controller: devUrl,
+                decoration: InputDecoration(
+                  labelText: 'Dev site URL',
+                  hintText: 'https://dev.shop.example.com',
+                  helperText:
+                      'Optional; a version that deploys itself from the upstream branch',
+                  errorText: showErrors ? devUrlError : null,
+                ),
+                keyboardType: TextInputType.url,
+                onSubmitted: (_) => _save(),
+              ),
+            ),
           ],
         ),
       ),

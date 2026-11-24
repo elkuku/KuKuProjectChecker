@@ -20,6 +20,16 @@ class SiteInfo {
   /// The local repository folder with ~ expanded, or null if none is set.
   final String? repoPath;
 
+  /// The dev site's address; null if the site has none.
+  final String? devUrl;
+
+  /// What the dev site reports; null if the site has none.
+  final Future<SystemInfo>? devInfo;
+
+  /// When the newest commit of the code the dev site deploys from (the local repository's
+  /// upstream branch, e.g. origin/master) was made; null without a dev site or repository.
+  final Future<DateTime?>? upstreamTime;
+
   const SiteInfo({
     required this.url,
     required this.name,
@@ -28,7 +38,42 @@ class SiteInfo {
     this.repoStatus,
     this.localVersions,
     this.repoPath,
+    this.devUrl,
+    this.devInfo,
+    this.upstreamTime,
   });
+}
+
+/// How a dev site that deploys itself from the upstream branch is doing.
+enum DevState {
+  /// The last deploy was fine and is newer than the newest upstream commit.
+  upToDate,
+
+  /// The upstream branch has a commit newer than the last deploy: the deploy didn't
+  /// run (yet) or is still running.
+  behind,
+
+  /// The last deploy finished with errors.
+  errors,
+
+  /// The last deploy didn't finish.
+  unfinished,
+
+  /// The site doesn't report its deploys.
+  unknown;
+
+  /// The state for the dev site's [deploy] and the time of the newest [upstream] commit.
+  static DevState of(LastDeploy? deploy, DateTime? upstream) {
+    if (deploy == null) return unknown;
+    if (deploy.status == 'errors') return errors;
+    if (!deploy.ok) return unfinished;
+    if (upstream != null &&
+        deploy.at != null &&
+        deploy.at!.isBefore(upstream)) {
+      return behind;
+    }
+    return upToDate;
+  }
 }
 
 /// What a site reports at /system/info/.

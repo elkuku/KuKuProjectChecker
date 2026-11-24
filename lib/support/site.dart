@@ -15,11 +15,16 @@ class Site {
   /// as a remote name.
   static const noDeploy = '-';
 
+  /// The address of the site's dev version, which deploys itself from the code on
+  /// GitHub (e.g. via a webhook); empty if there is none.
+  final String devUrl;
+
   const Site({
     required this.url,
     this.repoPath = '',
     this.name = '',
     this.deployRemote = autoDeploy,
+    this.devUrl = '',
   });
 
   /// The name, or the URL's host if no name is set.
@@ -46,8 +51,8 @@ class Site {
     return null;
   }
 
-  /// Reads all formats: the old plain URL string and the {url, repoPath, name, deployRemote}
-  /// map.
+  /// Reads all formats: the old plain URL string and the {url, repoPath, name, deployRemote,
+  /// devUrl} map.
   factory Site.fromJson(dynamic json) {
     String text(String key) => json[key] is String ? json[key] : '';
 
@@ -58,16 +63,18 @@ class Site {
           repoPath: text('repoPath'),
           name: text('name'),
           deployRemote: text('deployRemote'),
+          devUrl: text('devUrl'),
         ),
       _ => throw const FormatException('Invalid site in settings.'),
     };
   }
 
-  /// The deploy remote is only written when it is not automatic.
+  /// The deploy remote and the dev site are only written when they are set.
   Map<String, String> toJson() => {
         'name': name,
         'url': url,
         'repoPath': repoPath,
         if (deployRemote != autoDeploy) 'deployRemote': deployRemote,
+        if (devUrl.isNotEmpty) 'devUrl': devUrl,
       };
 }

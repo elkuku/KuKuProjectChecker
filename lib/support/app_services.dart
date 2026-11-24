@@ -38,6 +38,10 @@ class AppServices {
   /// The folder chooser for a site's local repository.
   final site_dialog.PickFolder pickFolder;
 
+  /// When the newest commit of a repository's upstream branch was made, to see whether
+  /// a dev site that deploys from it is behind.
+  final Future<DateTime?> Function(String repoPath) upstreamTime;
+
   AppServices({
     Settings? settings,
     Future<SystemInfo> Function(String url)? fetchInfo,
@@ -49,6 +53,7 @@ class AppServices {
     PushFunction? push,
     List<(OpenInTarget, String)>? openInTargets,
     site_dialog.PickFolder? pickFolder,
+    Future<DateTime?> Function(String repoPath)? upstreamTime,
   })  : settings = settings ?? Settings(),
         fetchInfo = fetchInfo ?? fetchSystemInfo,
         checkRepo = checkRepo ??
@@ -59,7 +64,8 @@ class AppServices {
         readLocal = readLocal ?? LocalVersions.read,
         push = push ?? Deployer().push,
         openInTargets = openInTargets ?? OpenInTarget.available(),
-        pickFolder = pickFolder ?? site_dialog.pickFolder;
+        pickFolder = pickFolder ?? site_dialog.pickFolder,
+        upstreamTime = upstreamTime ?? RepoStatus.upstreamCommitTime;
 
   /// Reads the versions (and, if exposed, the database and last deploy) from the site's
   /// /system/info/ endpoint.

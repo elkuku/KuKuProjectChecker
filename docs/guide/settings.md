@@ -11,6 +11,9 @@ The sites are managed right in the site list. Each site has:
 - **Deploy remote** (with a local repository): the git remote that [Deploy](./deploy) pushes to.
   **Automatic** (the default) shows the remote the app picks; choose one of the repository's
   remotes to set it yourself, or **No deploys** for a site that isn't deployed from the app.
+- **Dev site URL** (optional): a second version of the site that deploys itself from the code on
+  GitHub, e.g. `https://dev.shop.example.com` updated by a webhook on every push to `master`. The
+  site list then shows how it is doing, and the site's ⋮ menu has **Open dev site**.
 
 ![Editing a site](../screenshots/05_edit_site-dark.png){.theme-dark}
 ![Editing a site](../screenshots/05_edit_site-light.png){.theme-light}

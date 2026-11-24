@@ -125,6 +125,17 @@ class RepoStatus {
     return match?.group(1)?.toLowerCase();
   }
 
+  /// When the newest commit of the branch's upstream (e.g. origin/master) was committed,
+  /// as of the last fetch or push from this machine; null without an upstream.
+  static Future<DateTime?> upstreamCommitTime(String repoPath) async {
+    final path = expandHome(repoPath);
+    if (!await Directory(path).exists()) return null;
+
+    final output =
+        await _git(path, ['log', '-1', '--format=%cI', '@{upstream}']);
+    return output == null ? null : DateTime.tryParse(output);
+  }
+
   static Future<int?> _count(String path, String range) async {
     final output = await _git(path, ['rev-list', '--count', range]);
 
