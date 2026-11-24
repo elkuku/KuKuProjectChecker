@@ -125,7 +125,11 @@ AppServices sampleServices() => AppServices(
       fetchInfo: (url) async =>
           versions[url] ?? (throw const SocketException('Connection refused')),
       checkRepo: (path, _) async => statuses[path]!,
-      listRemotes: (_) async => const [],
+      // Like a typical project: the code on GitHub, the deploys to a Plesk repository.
+      listRemotes: (_) async => const [
+        ('origin', 'git@github.com:example/shop.git'),
+        ('production', 'shop@server.example.com:~/git/shop.git'),
+      ],
       repoChanges: SampleChanges.new,
       push: (repoPath, remote, branch, onOutput) async {
         // Like a push to a Plesk repository: ssh's notice, curl's progress table
