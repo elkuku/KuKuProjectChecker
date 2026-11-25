@@ -39,8 +39,34 @@ The app has no terminal, so a graphical program asks for the passphrase of your 
 `ksshaskpass` on KDE, otherwise `ssh-askpass` if it is installed (or whatever `SSH_ASKPASS` points to).
 :::
 
-::: info After the push
-The app only pushes. Whether the server's deploy script succeeded shows in the server's deploy log,
-e.g. in Plesk or with the deploy log page of the
+## The server's result
+
+Servers that deploy **during** the push and mark their deploy run in the output — like
+[KMyServer](https://github.com/elkuku/KMyServer)'s `site-deploy`: `>>>=…` starts the run, `<<<=…`
+ends it, `!!!! deploy FAILED` fails it — get a real result:
+
+- **Deployed to …** — the run ended without errors: the new version is live.
+- **The deploy failed** — the commits reached the server, but it could not build the new version;
+  the previous version stays live. The failing line is marked red in the output.
+- **The deploy did not finish** — the run started but its end never came (e.g. the connection
+  dropped). Check the site and its deploy log.
+
+The server's steps (`**** Installing composer dependencies…`) are shown as headings.
+
+::: info Other servers
+Servers that deploy on their own after the push (e.g. Plesk with a webhook) say nothing about the
+deploy in the push: the dialog says **Pushed to …**. Whether the deploy succeeded shows in the
+server's deploy log, e.g. in Plesk or with the deploy log page of the
 [KuKu system tools bundle](https://github.com/elkuku/SFSystemToolsBundle#readme).
 :::
+
+## Roll back
+
+For a site on a KMyServer server (its deploy remote is `<site>@<host>:/srv/sites/<site>/repo.git`),
+the site's menu has **Roll back…**. After asking, it runs `site-deploy <site> --rollback` over SSH as
+the site user: the live site switches back to the previous release in seconds.
+
+- Only the **code** goes back. The database stays as it is; migrations of the newer release are
+  not undone.
+- The site reports the rollback as its newest deploy.
+- Without an older release the server says `no older release to go back to`.

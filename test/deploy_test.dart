@@ -171,6 +171,60 @@ void main() {
       expect(find.text('Permission denied (publickey).'), findsOneWidget);
     });
 
+    testWidgets('says deployed when the server reports the end of its deploy',
+        (tester) async {
+      await openDialog(tester, (repo, remote, branch, onOutput) async {
+        onOutput('remote: >>>==========');
+        onOutput('remote: **** Switching to releases/20261125-152300');
+        onOutput('remote: <<<==========');
+        onOutput('   1a2b3c4..5d6e7f8  master -> master');
+        return 0;
+      });
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deployed to production'), findsOneWidget);
+      expect(find.text('The new version is live.'), findsOneWidget);
+    });
+
+    testWidgets('shows a failed deploy although the push went through',
+        (tester) async {
+      bool? closed;
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async => closed = await showDeployDialog(context,
+                siteName: 'Shop',
+                repoPath: '/repo',
+                status: _pending, push: (repo, remote, branch, onOutput) async {
+              onOutput('remote: >>>==========');
+              onOutput(
+                  'remote: !!!! deploy FAILED (line 93): releases/b removed, still live: releases/a');
+              onOutput('remote: <<<==========');
+              onOutput('   1a2b3c4..5d6e7f8  master -> master');
+              return 0;
+            }),
+            child: const Text('open'),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('The deploy failed'), findsOneWidget);
+      expect(find.textContaining('The previous version stays live.'),
+          findsOneWidget);
+      expect(find.textContaining('still live: releases/a'), findsOneWidget);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      // The remote has the commits: the list is refreshed.
+      expect(closed, isTrue);
+    });
+
     testWidgets('cancel does not push', (tester) async {
       var pushed = false;
       await openDialog(tester, (repo, remote, branch, onOutput) async {

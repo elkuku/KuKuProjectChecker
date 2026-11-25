@@ -1,11 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'kmyserver.dart';
 import 'repo_status.dart';
 
 /// Pushes a branch to a remote; reports each output line, returns the exit code.
 typedef PushFunction = Future<int> Function(String repoPath, String remote,
     String branch, void Function(String line) onOutput);
+
+/// Rolls a KMyServer site back to its previous release; reports each output line,
+/// returns the exit code.
+typedef RollbackFunction = Future<int> Function(
+    KMyServerSite site, void Function(String line) onOutput);
 
 /// Deploys a project by pushing its branch to the deploy remote; the server (e.g. Plesk)
 /// deploys on push.
@@ -13,14 +19,25 @@ class Deployer {
   /// Pushes [branch] to [remote] in [repoPath]. Each line of git's output goes to
   /// [onOutput]; returns git's exit code.
   Future<int> push(String repoPath, String remote, String branch,
-      void Function(String line) onOutput) async {
-    final process = await Process.start(
-      'git',
-      ['-C', RepoStatus.expandHome(repoPath), 'push', remote, branch],
-      environment: gitEnvironment(Platform.environment),
-    );
+          void Function(String line) onOutput) =>
+      _run(
+          'git',
+          ['-C', RepoStatus.expandHome(repoPath), 'push', remote, branch],
+          onOutput);
 
-    // git reports progress and the server's messages on stderr.
+  /// Switches a KMyServer site back to its previous release: runs
+  /// `site-deploy <site> --rollback` over ssh as the site user. Only the code goes back,
+  /// not the database.
+  Future<int> rollback(
+          KMyServerSite site, void Function(String line) onOutput) =>
+      _run('ssh', site.siteDeployArgs(['--rollback']), onOutput);
+
+  Future<int> _run(String executable, List<String> arguments,
+      void Function(String line) onOutput) async {
+    final process = await Process.start(executable, arguments,
+        environment: gitEnvironment(Platform.environment));
+
+    // git and ssh report progress and the server's messages on stderr.
     final done = Future.wait([
       for (final stream in [process.stdout, process.stderr])
         stream

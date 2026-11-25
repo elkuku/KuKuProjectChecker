@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'support/app_services.dart';
+import 'support/kmyserver.dart';
 import 'support/preferences.dart';
 import 'support/repo_status.dart';
 import 'support/site.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
 import 'widgets/deploy_dialog.dart';
+import 'widgets/rollback_dialog.dart';
 import 'widgets/site_dialog.dart';
 import 'widgets/site_card.dart';
 
@@ -110,6 +112,10 @@ class _MyHomePageState extends State<MyHomePage> {
   List<SiteInfo> siteInfos = [];
   bool loaded = false;
 
+  /// The sites whose deploy remote is on a KMyServer server (they can be rolled back);
+  /// filled in when their repository status arrives.
+  final Map<SiteInfo, KMyServerSite> kmyserverSites = {};
+
   AppServices get services => widget.services;
 
   @override
@@ -125,6 +131,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!mounted) return;
       setState(() {
         sites = saved;
+        kmyserverSites.clear();
         siteInfos = saved.map(_siteInfo).toList();
         loaded = true;
       });
@@ -141,7 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final repoPath =
         site.repoPath.isEmpty ? null : RepoStatus.expandHome(site.repoPath);
 
-    return SiteInfo(
+    final info = SiteInfo(
       url: site.url,
       name: site.displayName,
       hasName: site.name.isNotEmpty,
@@ -160,6 +167,14 @@ class _MyHomePageState extends State<MyHomePage> {
           ? null
           : (services.upstreamTime(repoPath)..ignore()),
     );
+    info.repoStatus?.then((status) {
+      final server = status.deployUrl == null
+          ? null
+          : KMyServerSite.fromRemoteUrl(status.deployUrl!);
+      if (server != null) kmyserverSites[info] = server;
+    }, onError: (_) {});
+
+    return info;
   }
 
   void _showMessage(String text, {SnackBarAction? action}) {
@@ -279,6 +294,10 @@ class _MyHomePageState extends State<MyHomePage> {
         if (siteInfo.devUrl != null)
           item(Icons.science_outlined, 'Open dev site',
               () => _launchUrl(siteInfo.devUrl!)),
+        if (kmyserverSites[siteInfo] case final server?) ...[
+          const PopupMenuDivider(),
+          item(Icons.history, 'Roll back…', () => _rollback(siteInfo, server)),
+        ],
         if (repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final (target, executable) in services.openInTargets)
@@ -309,6 +328,18 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // The deploy remote has the commits now.
     if (pushed && mounted) loadInfos();
+  }
+
+  Future<void> _rollback(SiteInfo siteInfo, KMyServerSite server) async {
+    final rolledBack = await showRollbackDialog(
+      context,
+      siteName: siteInfo.name,
+      site: server,
+      rollback: services.rollback,
+    );
+
+    // The site reports the rollback as its newest deploy.
+    if (rolledBack && mounted) loadInfos();
   }
 
   Widget _emptyState(BuildContext context) {

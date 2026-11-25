@@ -16,6 +16,9 @@ class RepoStatus {
   /// The deploy remote, see [findDeployRemote].
   final String? deployRemote;
 
+  /// The URL of [deployRemote]; null without one.
+  final String? deployUrl;
+
   /// Commits not on the deploy remote's branch, or null if there is no such branch.
   final int? undeployed;
 
@@ -24,6 +27,7 @@ class RepoStatus {
     required this.uncommitted,
     this.unpushed,
     this.deployRemote,
+    this.deployUrl,
     this.undeployed,
   });
 
@@ -70,6 +74,9 @@ class RepoStatus {
       uncommitted: uncommitted,
       unpushed: unpushed,
       deployRemote: chosen,
+      deployUrl: chosen == null
+          ? null
+          : remoteList.firstWhere((remote) => remote.$1 == chosen).$2,
       undeployed: undeployed,
     );
   }

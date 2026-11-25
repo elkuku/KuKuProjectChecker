@@ -12,6 +12,10 @@ enum PushLineKind {
   /// A message from the server ("remote: …"), e.g. from its deploy hook.
   server,
 
+  /// A step of the server's deploy ("remote: **** Installing composer dependencies...",
+  /// KMyServer's site-deploy).
+  step,
+
   /// A notice from ssh ("** WARNING: …").
   warning,
 
@@ -44,8 +48,12 @@ final _remotePrefix = RegExp(r'^(remote:\s?)+');
 final _updated = RegExp(
     r'^\s*(\+|\*|=|-)?\s*([0-9a-f]{7,}\.{2,3}[0-9a-f]{7,}|\[new (branch|tag)\]|\[deleted\])\s+\S+\s+->\s+\S+');
 final _error = RegExp(
-    r'^(error|fatal):|^\s*!\s*\[|Permission denied|Could not read from remote',
+    r'^(error|fatal):|^\s*!\s*\[|Permission denied|Could not read from remote|deploy FAILED',
     caseSensitive: false);
+// The frame of a deploy run in KMyServer's site-deploy: ">>>=====…" and "<<<=====…".
+final _runStart = RegExp(r'^>>>=+$');
+final _runEnd = RegExp(r'^<<<=+$');
+final _step = RegExp(r'^\*{4}\s*');
 // curl's progress table: its header lines and the rows of numbers and dashes.
 final _curlTable = RegExp(r'^(% Total|Dload)|^[\d.\skKMG%:-]+$');
 
@@ -73,8 +81,17 @@ List<PushLine> parsePushOutput(Iterable<String> lines) {
 
     if (_remotePrefix.hasMatch(line)) {
       final message = line.replaceFirst(_remotePrefix, '').trim();
-      if (message.isEmpty || _curlTable.hasMatch(message)) {
+      if (message.isEmpty ||
+          _curlTable.hasMatch(message) ||
+          _runStart.hasMatch(message) ||
+          _runEnd.hasMatch(message)) {
         result.add(PushLine(PushLineKind.noise, line));
+      } else if (_step.hasMatch(message)) {
+        result.add(PushLine(
+            PushLineKind.step,
+            message
+                .replaceFirst(_step, '')
+                .replaceFirst(RegExp(r'\.{3}$'), '')));
       } else {
         result.add(PushLine(
             _error.hasMatch(message) ? PushLineKind.error : PushLineKind.server,
@@ -96,4 +113,46 @@ List<PushLine> parsePushOutput(Iterable<String> lines) {
   }
 
   return result;
+}
+
+/// How the server's deploy went, as far as the push output tells.
+enum ServerDeploy {
+  /// The output has no deploy run: the server deploys on its own (e.g. a Plesk webhook).
+  unknown,
+
+  /// The run ended without errors: the new version is live.
+  finished,
+
+  /// The run reported "deploy FAILED": the previous version stays live.
+  failed,
+
+  /// The run started but did not end (e.g. the connection dropped).
+  unfinished,
+}
+
+/// Reads the deploy run in a push's output. Servers that deploy inside the push mark the
+/// run (KMyServer's site-deploy): "remote: >>>=…" starts it, "remote: <<<=…" ends it and
+/// "remote: !!!! deploy FAILED …" fails it. The newest run counts.
+({ServerDeploy result, String? detail}) serverDeployResult(
+    Iterable<String> lines) {
+  var result = ServerDeploy.unknown;
+  String? detail;
+
+  for (final raw in lines) {
+    final line = raw.replaceAll(_ansi, '').trim();
+    if (!_remotePrefix.hasMatch(line)) continue;
+    final message = line.replaceFirst(_remotePrefix, '').trim();
+
+    if (_runStart.hasMatch(message)) {
+      result = ServerDeploy.unfinished;
+      detail = null;
+    } else if (message.contains('deploy FAILED')) {
+      result = ServerDeploy.failed;
+      detail = message.replaceFirst(RegExp(r'^!+\s*'), '');
+    } else if (_runEnd.hasMatch(message) && result == ServerDeploy.unfinished) {
+      result = ServerDeploy.finished;
+    }
+  }
+
+  return (result: result, detail: detail);
 }

@@ -32,6 +32,9 @@ class AppServices {
   /// Pushes a branch to the deploy remote.
   final PushFunction push;
 
+  /// Rolls a KMyServer site back to its previous release.
+  final RollbackFunction rollback;
+
   /// The installed apps that can open a repository.
   final List<(OpenInTarget, String)> openInTargets;
 
@@ -51,6 +54,7 @@ class AppServices {
     RepoChanges Function(String repoPath)? repoChanges,
     Future<LocalVersions> Function(String repoPath)? readLocal,
     PushFunction? push,
+    RollbackFunction? rollback,
     List<(OpenInTarget, String)>? openInTargets,
     site_dialog.PickFolder? pickFolder,
     Future<DateTime?> Function(String repoPath)? upstreamTime,
@@ -63,6 +67,7 @@ class AppServices {
         repoChanges = repoChanges ?? RepoChanges.new,
         readLocal = readLocal ?? LocalVersions.read,
         push = push ?? Deployer().push,
+        rollback = rollback ?? Deployer().rollback,
         openInTargets = openInTargets ?? OpenInTarget.available(),
         pickFolder = pickFolder ?? site_dialog.pickFolder,
         upstreamTime = upstreamTime ?? RepoStatus.upstreamCommitTime;

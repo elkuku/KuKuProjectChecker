@@ -90,6 +90,12 @@ class _LogLine extends StatelessWidget {
           FontWeight.w500,
           null
         ),
+      PushLineKind.step => (
+          Icons.arrow_right,
+          colors.primary,
+          FontWeight.w600,
+          null
+        ),
       PushLineKind.server => (
           Icons.chevron_right,
           colors.onSurfaceVariant,

@@ -58,4 +58,62 @@ void main() {
     expect(parsePushOutput(['\x1B[32mremote: done\x1B[0m']).single,
         const PushLine(PushLineKind.server, 'done'));
   });
+
+  group('KMyServer deploy', () {
+    // Real output of a push to a KMyServer site (site-deploy in the post-receive hook).
+    const ok = [
+      'remote: >>>=============================================================================',
+      'remote: Wed Nov 25 15:23:00 UTC 2026',
+      'remote: **** Release releases/20261125-152300 from 33abb4d Paginate the user list',
+      'remote: **** Installing composer dependencies...',
+      'remote: **** Switching to releases/20261125-152300',
+      'remote: <<<=============================================================================',
+      'To ssh://localhost:2222/srv/sites/test2/repo.git',
+      '   1a2b3c4..33abb4d  master -> master',
+    ];
+    const failed = [
+      'remote: >>>=============================================================================',
+      'remote: **** Executing db migrations...',
+      'remote: !!!! deploy FAILED (line 93): releases/20261125-144122 removed, still live: releases/20261125-144119',
+      'remote: <<<=============================================================================',
+      '   1a2b3c4..5d6e7f8  master -> master',
+    ];
+
+    test('shows the steps and hides the frame of the run', () {
+      final lines = parsePushOutput(ok)
+          .where((line) => line.kind != PushLineKind.noise)
+          .toList();
+
+      expect(lines.take(4), [
+        const PushLine(PushLineKind.server, 'Wed Nov 25 15:23:00 UTC 2026'),
+        const PushLine(PushLineKind.step,
+            'Release releases/20261125-152300 from 33abb4d Paginate the user list'),
+        const PushLine(PushLineKind.step, 'Installing composer dependencies'),
+        const PushLine(
+            PushLineKind.step, 'Switching to releases/20261125-152300'),
+      ]);
+      expect(
+          parsePushOutput(failed).where((l) => l.kind == PushLineKind.error), [
+        const PushLine(PushLineKind.error,
+            '!!!! deploy FAILED (line 93): releases/20261125-144122 removed, still live: releases/20261125-144119'),
+      ]);
+    });
+
+    test('reads how the deploy ended', () {
+      expect(serverDeployResult(ok).result, ServerDeploy.finished);
+
+      final fail = serverDeployResult(failed);
+      expect(fail.result, ServerDeploy.failed);
+      expect(fail.detail, contains('still live: releases/20261125-144119'));
+
+      expect(serverDeployResult(ok.take(3)).result, ServerDeploy.unfinished);
+      expect(
+          serverDeployResult(['To server:~/git/shop.git', 'remote: Deploying'])
+              .result,
+          ServerDeploy.unknown);
+      // A later run counts: a failed run followed by a good one.
+      expect(
+          serverDeployResult([...failed, ...ok]).result, ServerDeploy.finished);
+    });
+  });
 }

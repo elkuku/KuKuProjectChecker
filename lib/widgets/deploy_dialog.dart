@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import '../screens/changes_screen.dart' show monoTextStyle;
 import 'push_log_view.dart';
 import '../support/deployer.dart' show PushFunction;
+import '../support/push_log.dart';
 import '../support/repo_status.dart';
 
 /// Asks before deploying, then shows git's output while pushing to the deploy remote.
-/// Returns true if the push succeeded.
+/// When the server deploys inside the push (KMyServer), the result of its deploy is shown
+/// too. Returns true if the push succeeded (the remote has the commits, even when the
+/// server's deploy failed).
 Future<bool> showDeployDialog(
   BuildContext context, {
   required String siteName,
@@ -28,7 +31,15 @@ Future<bool> showDeployDialog(
   return result ?? false;
 }
 
-enum _Stage { confirm, running, done, failed }
+enum _Stage {
+  confirm,
+  running,
+  done,
+  failed,
+
+  /// The push went through, but the server's deploy failed or didn't finish.
+  deployFailed,
+}
 
 class DeployDialog extends StatefulWidget {
   final String siteName;
@@ -55,6 +66,10 @@ class _DeployDialogState extends State<DeployDialog> {
   /// Shows git's output as it is, without sorting out the noise.
   bool raw = false;
   final ScrollController scroll = ScrollController();
+
+  /// How the server's deploy went, read from the output when the push is over.
+  ({ServerDeploy result, String? detail}) deploy =
+      (result: ServerDeploy.unknown, detail: null);
 
   String get remote => widget.status.deployRemote!;
   String get branch => widget.status.branch;
@@ -83,7 +98,15 @@ class _DeployDialogState extends State<DeployDialog> {
     }
 
     if (mounted) {
-      setState(() => stage = exitCode == 0 ? _Stage.done : _Stage.failed);
+      setState(() {
+        deploy = serverDeployResult(output);
+        stage = switch ((exitCode, deploy.result)) {
+          (0, ServerDeploy.failed || ServerDeploy.unfinished) =>
+            _Stage.deployFailed,
+          (0, _) => _Stage.done,
+          _ => _Stage.failed,
+        };
+      });
     }
   }
 
@@ -97,19 +120,24 @@ class _DeployDialogState extends State<DeployDialog> {
       scrollable: true,
       icon: Icon(switch (stage) {
         _Stage.done => Icons.check_circle,
-        _Stage.failed => Icons.error,
+        _Stage.failed || _Stage.deployFailed => Icons.error,
         _ => Icons.rocket_launch,
       }),
       iconColor: switch (stage) {
         _Stage.done => Colors.green,
-        _Stage.failed => theme.colorScheme.error,
+        _Stage.failed || _Stage.deployFailed => theme.colorScheme.error,
         _ => null,
       },
       title: Text(switch (stage) {
         _Stage.confirm => 'Deploy ${widget.siteName}?',
         _Stage.running => 'Deploying ${widget.siteName} …',
+        _Stage.done when deploy.result == ServerDeploy.finished =>
+          'Deployed to $remote',
         _Stage.done => 'Pushed to $remote',
         _Stage.failed => 'The push failed',
+        _Stage.deployFailed when deploy.result == ServerDeploy.failed =>
+          'The deploy failed',
+        _Stage.deployFailed => 'The deploy did not finish',
       }),
       content: SizedBox(
         width: 640,
@@ -143,10 +171,20 @@ class _DeployDialogState extends State<DeployDialog> {
                 const _Warning('The branch has no upstream (e.g. GitHub).'),
             ] else ...[
               if (stage == _Stage.running) const LinearProgressIndicator(),
-              if (stage == _Stage.done)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text('The server deploys the new version now.'),
+              if (stage == _Stage.done || stage == _Stage.deployFailed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(switch (deploy.result) {
+                    ServerDeploy.unknown =>
+                      'The server deploys the new version now.',
+                    ServerDeploy.finished => 'The new version is live.',
+                    ServerDeploy.failed =>
+                      'The commits are on the server, but it could not build the new version. '
+                          'The previous version stays live.',
+                    ServerDeploy.unfinished =>
+                      'The server started the deploy but did not report its end. '
+                          'Check the site and its deploy log.',
+                  }),
                 ),
               const SizedBox(height: 8),
               PushLogView(
@@ -183,7 +221,9 @@ class _DeployDialogState extends State<DeployDialog> {
         _Stage.running => const [],
         _ => [
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(stage == _Stage.done),
+              // The remote has the commits after any push that went through.
+              onPressed: () => Navigator.of(context)
+                  .pop(stage == _Stage.done || stage == _Stage.deployFailed),
               child: const Text('Close'),
             ),
           ],
