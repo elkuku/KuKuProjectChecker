@@ -215,7 +215,12 @@ class _NewSiteDialogState extends State<_NewSiteDialog> {
                           '${s.name}  (${s.sshHost}${s.sshPort == null ? '' : ':${s.sshPort}'})',
                           overflow: TextOverflow.ellipsis)),
               ],
-              onChanged: (s) => setState(() => server = s!),
+              onChanged: (s) => setState(() {
+                server = s!;
+                if (!urlEdited && domain.text.trim().isNotEmpty) {
+                  url.text = server.siteUrl(domain.text.trim());
+                }
+              }),
             ),
             TextFormField(
               controller: name,
@@ -233,7 +238,7 @@ class _NewSiteDialogState extends State<_NewSiteDialog> {
                   labelText: 'Domain', hintText: 'shop.example.com'),
               validator: (text) => NewSite.domainError(text ?? ''),
               onChanged: (text) {
-                if (!urlEdited) url.text = 'https://${text.trim()}';
+                if (!urlEdited) url.text = server.siteUrl(text.trim());
               },
             ),
             TextFormField(

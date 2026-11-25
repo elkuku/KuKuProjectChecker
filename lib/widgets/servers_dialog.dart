@@ -122,6 +122,12 @@ class _ServerForm extends StatefulWidget {
   State<_ServerForm> createState() => _ServerFormState();
 }
 
+String? _portError(String? text) {
+  text = (text ?? '').trim();
+  final n = int.tryParse(text);
+  return text.isEmpty || (n != null && n > 0 && n < 65536) ? null : 'Port?';
+}
+
 class _ServerFormState extends State<_ServerForm> {
   final form = GlobalKey<FormState>();
   late final name = TextEditingController(text: widget.server?.name);
@@ -129,10 +135,12 @@ class _ServerFormState extends State<_ServerForm> {
   late final host = TextEditingController(text: widget.server?.sshHost);
   late final port =
       TextEditingController(text: widget.server?.sshPort?.toString() ?? '');
+  late final sitePort =
+      TextEditingController(text: widget.server?.sitePort?.toString() ?? '');
 
   @override
   void dispose() {
-    for (final c in [name, remote, host, port]) {
+    for (final c in [name, remote, host, port, sitePort]) {
       c.dispose();
     }
     super.dispose();
@@ -145,6 +153,7 @@ class _ServerFormState extends State<_ServerForm> {
       remote: remote.text.trim(),
       sshHost: host.text.trim(),
       sshPort: int.tryParse(port.text.trim()),
+      sitePort: int.tryParse(sitePort.text.trim()),
     ));
   }
 
@@ -198,16 +207,18 @@ class _ServerFormState extends State<_ServerForm> {
                       controller: port,
                       decoration: const InputDecoration(
                           labelText: 'Port', hintText: '22'),
-                      validator: (text) {
-                        text = (text ?? '').trim();
-                        final n = int.tryParse(text);
-                        return text.isEmpty || (n != null && n > 0 && n < 65536)
-                            ? null
-                            : 'Port?';
-                      },
+                      validator: _portError,
                     ),
                   ),
                 ],
+              ),
+              TextFormField(
+                controller: sitePort,
+                decoration: const InputDecoration(
+                    labelText: 'HTTPS port of the sites',
+                    hintText: '443',
+                    helperText: 'e.g. 8443 for the local test VM'),
+                validator: _portError,
               ),
             ],
           ),

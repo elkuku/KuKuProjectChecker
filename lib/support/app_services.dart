@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import '../widgets/site_dialog.dart' as site_dialog;
 import 'deployer.dart';
@@ -86,12 +87,27 @@ class AppServices {
         pickFolder = pickFolder ?? site_dialog.pickFolder,
         upstreamTime = upstreamTime ?? RepoStatus.upstreamCommitTime;
 
+  /// Local development servers (Caddy's local CA on the test VM, the Symfony CLI) use their
+  /// own certificates. They are accepted for loopback addresses only, which never leave
+  /// this machine; every other site needs a valid certificate.
+  static bool isLocalHost(String host) {
+    host = host.toLowerCase();
+    return host == 'localhost' ||
+        host.endsWith('.localhost') ||
+        host == '::1' ||
+        host == '[::1]' ||
+        RegExp(r'^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(host);
+  }
+
+  static final http.Client _client = IOClient(HttpClient()
+    ..badCertificateCallback = (certificate, host, port) => isLocalHost(host));
+
   /// Reads the versions (and, if exposed, the database and last deploy) from the site's
   /// /system/info/ endpoint.
   static Future<SystemInfo> fetchSystemInfo(String site) async {
     // A site saved with a trailing slash would give "//system/info/", which the sites don't route.
     final base = site.replaceFirst(RegExp(r'/+$'), '');
-    final response = await http.get(Uri.parse('$base/system/info/'));
+    final response = await _client.get(Uri.parse('$base/system/info/'));
 
     if (response.statusCode == 200) {
       return SystemInfo.fromJson(

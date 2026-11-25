@@ -13,8 +13,12 @@ import 'package:kuku_project_checker/support/site_creator.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
 const _plesk = Server(name: 'Plesk', remote: 'elkuku.dev');
-const _vm =
-    Server(name: 'Test VM', remote: 'vm', sshHost: 'localhost', sshPort: 2222);
+const _vm = Server(
+    name: 'Test VM',
+    remote: 'vm',
+    sshHost: 'localhost',
+    sshPort: 2222,
+    sitePort: 8443);
 
 /// Preferences in memory: tests can't read files inside the fake clock of widget tests.
 class _Memory extends Preferences {
@@ -76,6 +80,8 @@ void main() {
           const Server(name: 'New', remote: 'kmyserver', sshHost: 'h')
               .siteRepoUrl('shop'),
           'shop@h:/srv/sites/shop/repo.git');
+      expect(_vm.siteUrl('shop.localhost'), 'https://shop.localhost:8443');
+      expect(_plesk.siteUrl('shop.example.com'), 'https://shop.example.com');
       expect(Server.remoteError('kmyserver'), isNull);
       expect(Server.remoteError('my remote'), isNotNull);
     });
@@ -282,8 +288,8 @@ void main() {
           find.widgetWithText(TextFormField, 'Name'), 'shop');
       await tester.enterText(
           find.widgetWithText(TextFormField, 'Domain'), 'shop.localhost');
-      // The address follows the domain.
-      expect(find.text('https://shop.localhost'), findsOneWidget);
+      // The address follows the domain, with the server's port for the sites.
+      expect(find.text('https://shop.localhost:8443'), findsOneWidget);
       await tester.tap(find.text('Create a private GitHub repository'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
@@ -294,8 +300,23 @@ void main() {
       await tester.tap(find.text('Add to the list'));
       await tester.pumpAndSettle();
 
-      expect(sites.single.url, 'https://shop.localhost');
+      expect(sites.single.url, 'https://shop.localhost:8443');
       expect(sites.single.repoPath, endsWith('/repos/shop'));
     });
+  });
+
+  test('local certificates are accepted for loopback addresses only', () {
+    for (final host in ['localhost', 'shop.localhost', '127.0.0.1', '::1']) {
+      expect(AppServices.isLocalHost(host), isTrue, reason: host);
+    }
+    for (final host in [
+      'example.com',
+      'localhost.example.com',
+      'shop.localhost.evil.com',
+      '10.0.0.1',
+      '1270.0.0.1',
+    ]) {
+      expect(AppServices.isLocalHost(host), isFalse, reason: host);
+    }
   });
 }

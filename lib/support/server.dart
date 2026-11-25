@@ -14,11 +14,15 @@ class Server {
   /// The SSH port, if not 22 (e.g. 2222 for the local test VM).
   final int? sshPort;
 
+  /// The HTTPS port the sites answer on, if not 443 (e.g. 8443 for the local test VM).
+  final int? sitePort;
+
   const Server({
     required this.name,
     required this.remote,
     this.sshHost = '',
     this.sshPort,
+    this.sitePort,
   });
 
   /// New sites can be created on it from a template.
@@ -30,6 +34,10 @@ class Server {
         '$user@$sshHost',
         ...command,
       ];
+
+  /// The address of a site on this server.
+  String siteUrl(String domain) =>
+      sitePort == null ? 'https://$domain' : 'https://$domain:$sitePort';
 
   /// The git URL of a site's repository on this KMyServer server.
   String siteRepoUrl(String site) => sshPort == null
@@ -55,6 +63,7 @@ class Server {
       remote: text('remote'),
       sshHost: text('sshHost'),
       sshPort: json['sshPort'] is int ? json['sshPort'] : null,
+      sitePort: json['sitePort'] is int ? json['sitePort'] : null,
     );
   }
 
@@ -63,6 +72,7 @@ class Server {
         'remote': remote,
         if (sshHost.isNotEmpty) 'sshHost': sshHost,
         if (sshPort != null) 'sshPort': sshPort,
+        if (sitePort != null) 'sitePort': sitePort,
       };
 
   @override
@@ -71,8 +81,9 @@ class Server {
       other.name == name &&
       other.remote == remote &&
       other.sshHost == sshHost &&
-      other.sshPort == sshPort;
+      other.sshPort == sshPort &&
+      other.sitePort == sitePort;
 
   @override
-  int get hashCode => Object.hash(name, remote, sshHost, sshPort);
+  int get hashCode => Object.hash(name, remote, sshHost, sshPort, sitePort);
 }

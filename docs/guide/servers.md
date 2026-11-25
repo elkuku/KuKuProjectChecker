@@ -10,6 +10,8 @@ server. Manage them with the server switch in the app bar → **Servers…**:
 - **Git remote** — the remote the sites use for this server, e.g. `kmyserver`.
 - **SSH host** and **Port** — only for KMyServer servers, to create sites from a template
   (e.g. `new.example.com`, or `localhost` and `2222` for the local test VM).
+- **HTTPS port of the sites** — if not 443, e.g. `8443` for the local test VM; new sites get
+  `https://<domain>:<port>` as their address.
 
 The servers are saved in `preferences.json`, next to the theme.
 
@@ -43,9 +45,15 @@ Then **Add to the list** adds the site with its address and local repository.
 
 - **Templates:** *Symfony starter* (github.com/elkuku/symfony-starter), or any public https git URL,
   optionally with a branch: `https://github.com/symfony/demo.git#main`.
-- **Site address:** follows the domain (`https://<domain>`); change it when the site is reached
-  differently, e.g. `https://shop.localhost:8443` on the test VM.
+- **Site address:** follows the domain and the server's HTTPS port (`https://<domain>`, on the
+  test VM `https://<domain>:8443`); change it when the site is reached differently.
 - The local folder must not exist yet.
+
+::: info Local certificates
+Sites on `localhost`, `*.localhost` or `127.x.x.x` (the test VM, the Symfony CLI) often use their
+own certificate authority. The app accepts their certificates; for every other address the
+certificate must be valid.
+:::
 
 ::: tip Requirements
 SSH access as **root** to the server (for `site-add`) and as the site user (for cloning; site-add
