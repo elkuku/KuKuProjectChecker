@@ -14,6 +14,9 @@ git remote add production user@server:~/git/shop.git
 
 **No deploys** hides deploying for a site, e.g. one that is deployed some other way.
 
+To send **all** sites to one server, e.g. while moving to a new one, use the server switch in
+the app bar, see [Servers and new sites](./servers).
+
 ## Deploy
 
 Every site with a local repository has a 🚀 **Deploy** button. When the deploy remote is missing

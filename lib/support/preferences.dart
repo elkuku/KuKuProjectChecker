@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'server.dart';
+
 /// App preferences, kept in preferences.json next to the site settings.
 class Preferences {
   final Future<Directory> Function() _directory;
@@ -34,9 +36,41 @@ class Preferences {
     );
   }
 
+  /// The servers the sites can deploy to, and the active one's name ('' = each site uses
+  /// its own deploy remote).
+  Future<(List<Server>, String)> readServers() async {
+    final json = await _read();
+    final list = json['servers'] is List ? json['servers'] as List : const [];
+    final servers = [
+      for (final item in list)
+        if (item is Map<String, dynamic>) Server.fromJson(item)
+    ]
+        .where((server) => server.name.isNotEmpty && server.remote.isNotEmpty)
+        .toList();
+    final active = json['activeServer'];
+
+    return (
+      servers,
+      active is String && servers.any((server) => server.name == active)
+          ? active
+          : ''
+    );
+  }
+
+  Future<void> writeServers(List<Server> servers, String active) async {
+    final preferences = await _read()
+      ..['servers'] = [for (final server in servers) server.toJson()]
+      ..['activeServer'] = active;
+    await _write(preferences);
+  }
+
   Future<void> writeThemeMode(ThemeMode mode) async {
     final preferences = await _read()
       ..['themeMode'] = mode.name;
+    await _write(preferences);
+  }
+
+  Future<void> _write(Map<String, dynamic> preferences) async {
     final file = await _file;
 
     await file.parent.create(recursive: true);

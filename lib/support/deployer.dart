@@ -8,6 +8,34 @@ import 'repo_status.dart';
 typedef PushFunction = Future<int> Function(String repoPath, String remote,
     String branch, void Function(String line) onOutput);
 
+/// Runs a command; reports each output line, returns the exit code.
+typedef RunFunction = Future<int> Function(String executable,
+    List<String> arguments, void Function(String line) onOutput,
+    {String? workingDirectory});
+
+/// Runs [executable] and passes every line it prints (stdout and stderr) to [onOutput];
+/// returns its exit code. git and ssh get a graphical askpass program for passphrases.
+Future<int> runCommand(String executable, List<String> arguments,
+    void Function(String line) onOutput,
+    {String? workingDirectory}) async {
+  final process = await Process.start(executable, arguments,
+      workingDirectory: workingDirectory,
+      environment: Deployer.gitEnvironment(Platform.environment));
+
+  // git and ssh report progress and the server's messages on stderr.
+  final done = Future.wait([
+    for (final stream in [process.stdout, process.stderr])
+      stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .forEach(onOutput),
+  ]);
+  final exitCode = await process.exitCode;
+  await done;
+
+  return exitCode;
+}
+
 /// Rolls a KMyServer site back to its previous release; reports each output line,
 /// returns the exit code.
 typedef RollbackFunction = Future<int> Function(
@@ -20,7 +48,7 @@ class Deployer {
   /// [onOutput]; returns git's exit code.
   Future<int> push(String repoPath, String remote, String branch,
           void Function(String line) onOutput) =>
-      _run(
+      runCommand(
           'git',
           ['-C', RepoStatus.expandHome(repoPath), 'push', remote, branch],
           onOutput);
@@ -30,26 +58,7 @@ class Deployer {
   /// not the database.
   Future<int> rollback(
           KMyServerSite site, void Function(String line) onOutput) =>
-      _run('ssh', site.siteDeployArgs(['--rollback']), onOutput);
-
-  Future<int> _run(String executable, List<String> arguments,
-      void Function(String line) onOutput) async {
-    final process = await Process.start(executable, arguments,
-        environment: gitEnvironment(Platform.environment));
-
-    // git and ssh report progress and the server's messages on stderr.
-    final done = Future.wait([
-      for (final stream in [process.stdout, process.stderr])
-        stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())
-            .forEach(onOutput),
-    ]);
-    final exitCode = await process.exitCode;
-    await done;
-
-    return exitCode;
-  }
+      runCommand('ssh', site.siteDeployArgs(['--rollback']), onOutput);
 
   /// git and ssh can't ask for a passphrase on a terminal here, so a graphical askpass
   /// program asks instead, if one is installed (ksshaskpass on KDE).

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -35,6 +36,12 @@ class AppServices {
   /// Rolls a KMyServer site back to its previous release.
   final RollbackFunction rollback;
 
+  /// Runs a command (ssh, git, gh) and streams its output; used to create sites.
+  final RunFunction run;
+
+  /// Whether a file or folder exists (e.g. the folder for a new site's clone).
+  final Future<bool> Function(String path) pathExists;
+
   /// The installed apps that can open a repository.
   final List<(OpenInTarget, String)> openInTargets;
 
@@ -55,6 +62,8 @@ class AppServices {
     Future<LocalVersions> Function(String repoPath)? readLocal,
     PushFunction? push,
     RollbackFunction? rollback,
+    RunFunction? run,
+    Future<bool> Function(String path)? pathExists,
     List<(OpenInTarget, String)>? openInTargets,
     site_dialog.PickFolder? pickFolder,
     Future<DateTime?> Function(String repoPath)? upstreamTime,
@@ -68,6 +77,11 @@ class AppServices {
         readLocal = readLocal ?? LocalVersions.read,
         push = push ?? Deployer().push,
         rollback = rollback ?? Deployer().rollback,
+        run = run ?? runCommand,
+        pathExists = pathExists ??
+            ((path) async =>
+                await FileSystemEntity.type(path) !=
+                FileSystemEntityType.notFound),
         openInTargets = openInTargets ?? OpenInTarget.available(),
         pickFolder = pickFolder ?? site_dialog.pickFolder,
         upstreamTime = upstreamTime ?? RepoStatus.upstreamCommitTime;

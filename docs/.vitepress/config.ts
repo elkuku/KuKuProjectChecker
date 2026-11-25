@@ -36,6 +36,7 @@ export default defineConfig({
           { text: 'Open in …', link: '/guide/open-in' },
           { text: 'Uncommitted changes', link: '/guide/changes' },
           { text: 'Deploying', link: '/guide/deploy' },
+          { text: 'Servers and new sites', link: '/guide/servers' },
         ],
       },
       {

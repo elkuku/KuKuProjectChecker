@@ -19,6 +19,8 @@ so they need `git`.
 | `lib/screens/` | The uncommitted changes and the diff. |
 | `lib/widgets/` | The site card and the repository status line. |
 | `lib/support/app_services.dart` | Everything the app reads from outside: settings, sites, repositories, installed apps. Tests and the screenshots replace it with sample data. |
+| `lib/support/server.dart` | A server: its git remote, SSH host and port; saved in preferences.json. |
+| `lib/support/site_creator.dart` | New site from a template: site-add over SSH, clone, GitHub repo. |
 | `lib/support/kmyserver.dart` | Recognizes KMyServer site remotes; the ssh arguments for `site-deploy` (rollback). |
 | `lib/support/repo_status.dart` | Branch, uncommitted, unpushed and undeployed counts, from local git data only. |
 | `lib/support/repo_changes.dart` | The uncommitted files and their diffs. |

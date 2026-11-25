@@ -5,11 +5,14 @@ import 'support/app_services.dart';
 import 'support/kmyserver.dart';
 import 'support/preferences.dart';
 import 'support/repo_status.dart';
+import 'support/server.dart';
 import 'support/site.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
 import 'widgets/deploy_dialog.dart';
+import 'widgets/new_site_dialog.dart';
 import 'widgets/rollback_dialog.dart';
+import 'widgets/servers_dialog.dart';
 import 'widgets/site_dialog.dart';
 import 'widgets/site_card.dart';
 
@@ -83,6 +86,7 @@ class _MyAppState extends State<MyApp> {
         themeMode: themeMode,
         onSwitchTheme: _switchTheme,
         services: services,
+        preferences: preferences,
       ),
     );
   }
@@ -95,12 +99,16 @@ class MyHomePage extends StatefulWidget {
     this.themeMode = ThemeMode.system,
     this.onSwitchTheme,
     required this.services,
+    this.preferences,
   });
 
   final String title;
   final ThemeMode themeMode;
   final VoidCallback? onSwitchTheme;
   final AppServices services;
+
+  /// Where the servers are saved; null keeps them in memory only.
+  final Preferences? preferences;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -116,13 +124,83 @@ class _MyHomePageState extends State<MyHomePage> {
   /// filled in when their repository status arrives.
   final Map<SiteInfo, KMyServerSite> kmyserverSites = {};
 
+  /// The servers the sites can deploy to, and the active one ('' = each site's own remote).
+  List<Server> servers = [];
+  String activeServer = '';
+
   AppServices get services => widget.services;
+
+  Server? get _active =>
+      servers.where((server) => server.name == activeServer).firstOrNull;
 
   @override
   void initState() {
     super.initState();
 
     loadInfos();
+    // With an active server the sites deploy elsewhere: read them again once it is known.
+    _loadServers().then((_) {
+      if (mounted && activeServer.isNotEmpty) loadInfos();
+    });
+  }
+
+  Future<void> _loadServers() async {
+    final preferences = widget.preferences;
+    if (preferences == null) return;
+    try {
+      final (saved, active) = await preferences.readServers();
+      if (mounted) {
+        setState(() {
+          servers = saved;
+          activeServer = active;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveServers() async =>
+      widget.preferences?.writeServers(servers, activeServer);
+
+  /// All sites deploy to [name]'s remote ('' = each site's own deploy remote).
+  Future<void> _switchServer(String name) async {
+    setState(() => activeServer = name);
+    await _saveServers();
+    loadInfos();
+  }
+
+  Future<void> _manageServers() async {
+    final edited = await showServersDialog(context, servers);
+    if (edited == null || !mounted) return;
+    setState(() {
+      servers = edited;
+      if (_active == null) activeServer = '';
+    });
+    await _saveServers();
+    loadInfos();
+  }
+
+  Future<void> _newSite() async {
+    final kmyservers = servers.where((server) => server.isKMyServer).toList();
+    if (kmyservers.isEmpty) {
+      _showMessage(
+          'Add a KMyServer server first (Servers…, with its SSH host)');
+      return;
+    }
+    final site = await showNewSiteDialog(
+      context,
+      servers: kmyservers,
+      server: _active?.isKMyServer == true ? _active : null,
+      run: services.run,
+      pickFolder: services.pickFolder,
+      exists: services.pathExists,
+    );
+    if (site == null || !mounted) return;
+
+    setState(() {
+      sites.add(site);
+      siteInfos.add(_siteInfo(site));
+    });
+    await _save();
   }
 
   /// Reads the sites and everything about them again.
@@ -155,7 +233,13 @@ class _MyHomePageState extends State<MyHomePage> {
       systemInfo: systemInfo,
       repoStatus: repoPath == null
           ? null
-          : (services.checkRepo(site.repoPath, site.deployRemote)..ignore()),
+          : (services.checkRepo(
+              site.repoPath,
+              // The active server's remote, unless the site never deploys.
+              _active != null && site.deployRemote != Site.noDeploy
+                  ? _active!.remote
+                  : site.deployRemote)
+            ..ignore()),
       localVersions:
           repoPath == null ? null : (services.readLocal(repoPath)..ignore()),
       repoPath: repoPath,
@@ -342,6 +426,51 @@ class _MyHomePageState extends State<MyHomePage> {
     if (rolledBack && mounted) loadInfos();
   }
 
+  /// The active server: where all sites deploy, or each site's own remote.
+  Widget _serverMenu() {
+    const manage = '\u0000manage';
+
+    return PopupMenuButton<String>(
+      tooltip: 'Switch the server the sites deploy to',
+      onSelected: (value) =>
+          value == manage ? _manageServers() : _switchServer(value),
+      itemBuilder: (context) => [
+        CheckedPopupMenuItem(
+          value: '',
+          checked: activeServer.isEmpty,
+          child: const Text("Each site's own deploy remote"),
+        ),
+        for (final server in servers)
+          CheckedPopupMenuItem(
+            value: server.name,
+            checked: server.name == activeServer,
+            child: Text('${server.name}  (remote ${server.remote})'),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: manage,
+          child: ListTile(
+            leading: Icon(Icons.edit_outlined),
+            title: Text('Servers…'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.dns_outlined),
+            const SizedBox(width: 6),
+            Text(_active?.name ?? 'Own remotes'),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _emptyState(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -380,6 +509,12 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
         actions: [
+          _serverMenu(),
+          IconButton(
+            onPressed: _newSite,
+            tooltip: 'New site from a template',
+            icon: const Icon(Icons.add_box_outlined),
+          ),
           IconButton(
             onPressed: _addSite,
             tooltip: 'Add site',
