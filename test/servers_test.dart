@@ -7,6 +7,7 @@ import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/server.dart';
+import 'package:kuku_project_checker/support/server_health.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_creator.dart';
@@ -19,6 +20,62 @@ const _vm = Server(
     sshHost: 'localhost',
     sshPort: 2222,
     sitePort: 8443);
+
+ServerHealth _healthy() => ServerHealth.fromJson({
+      'schema': 1,
+      'generatedAt': '2026-11-26T09:00:00Z',
+      'host': 'test-vm',
+      'problems': 0,
+      'system': {
+        'os': 'Debian 13.8, kernel 6.12',
+        'kernel': '6.12',
+        'uptime': ' 09:00:00 up  1:42',
+        'rebootRequired': false,
+        'rebootPackages': [],
+      },
+      'services': [
+        {'name': 'caddy', 'state': 'active', 'ok': true},
+      ],
+      'failedUnits': [],
+      'disk': [
+        {
+          'mount': '/',
+          'size': '80G',
+          'used': '12G',
+          'available': '68G',
+          'percent': 15,
+        },
+      ],
+      'memory': {'total': '2.0Gi', 'used': '380Mi'},
+      'updates': {'pending': 0, 'lastUnattended': '2026-11-26 06:12'},
+      'security': {
+        'bannedNow': 0,
+        'bannedTotal': 7,
+        'listening': [22, 80, 443],
+        'firewall': [22, 80, 443],
+      },
+      'backup': {
+        'ok': true,
+        'lastOk': '2026-11-26 02:30',
+        'ageHours': 7,
+        'sets': 14,
+      },
+      'mail': {'configured': true, 'ok': true, 'last': '2026-11-26 06:00'},
+      'sites': [
+        {
+          'name': 'starter',
+          'domain': 'starter.localhost',
+          'http': 200,
+          'certificate': {'days': 0, 'issuer': 'Caddy Local Authority'},
+          'release': '20261125-1412',
+          'revision': '33abb4d',
+          'deploy': {'state': 'ok', 'when': '2026-11-26 08:45'},
+          'critical24h': 0,
+          'lastCritical': null,
+          'problems': [],
+        },
+      ],
+    });
 
 /// Preferences in memory: tests can't read files inside the fake clock of widget tests.
 class _Memory extends Preferences {
@@ -130,6 +187,7 @@ void main() {
           },
           readLocal: (_) async => throw Exception('none'),
           openInTargets: const [],
+          fetchServerHealth: (_) async => _healthy(),
         ),
       ));
       await tester.pumpAndSettle();

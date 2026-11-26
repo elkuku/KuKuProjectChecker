@@ -1,3 +1,67 @@
+import 'server.dart';
+
+/// One environment of a project: local Symfony, Plesk prod, a KMyServer, a VM, …
+/// The [server] is a [Server.name], or empty for an environment without a server entry.
+class SiteTarget {
+  static const autoDeploy = '';
+  static const noDeploy = '-';
+
+  final String name;
+  final String server;
+  final String url;
+  final String deployRemote;
+
+  const SiteTarget({
+    required this.name,
+    this.server = '',
+    required this.url,
+    this.deployRemote = autoDeploy,
+  });
+
+  /// The host of [url], used to match a server health report to this environment.
+  String get domain => Uri.tryParse(url)?.host ?? '';
+
+  static String? nameError(String text) =>
+      text.trim().isEmpty ? 'Enter a name for this environment' : null;
+
+  static String? urlError(String text) => Site.urlError(text);
+
+  static String? deployRemoteError(String text) {
+    text = text.trim();
+    if (text == autoDeploy || text == noDeploy) return null;
+    return Server.remoteError(text);
+  }
+
+  factory SiteTarget.fromJson(Map<String, dynamic> json) {
+    String text(String key) => json[key] is String ? json[key] : '';
+
+    return SiteTarget(
+      name: text('name'),
+      server: text('server'),
+      url: text('url'),
+      deployRemote: text('deployRemote'),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'server': server,
+        'url': url,
+        if (deployRemote != autoDeploy) 'deployRemote': deployRemote,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is SiteTarget &&
+      other.name == name &&
+      other.server == server &&
+      other.url == url &&
+      other.deployRemote == deployRemote;
+
+  @override
+  int get hashCode => Object.hash(name, server, url, deployRemote);
+}
+
 /// A site to check, with an optional name and the optional path to its local git repository.
 class Site {
   final String url;
@@ -19,13 +83,38 @@ class Site {
   /// GitHub (e.g. via a webhook); empty if there is none.
   final String devUrl;
 
+  /// Environments of this project. Empty for settings written before this existed:
+  /// [environments] then derives one target from the fields above.
+  final List<SiteTarget> targets;
+
   const Site({
     required this.url,
     this.repoPath = '',
     this.name = '',
     this.deployRemote = autoDeploy,
     this.devUrl = '',
+    this.targets = const [],
   });
+
+  /// The saved targets, or one legacy target built from [url]/[deployRemote].
+  List<SiteTarget> get environments => targets.isNotEmpty
+      ? targets
+      : [
+          SiteTarget(
+            name: displayName,
+            url: url,
+            deployRemote: deployRemote,
+          )
+        ];
+
+  Site withTargets(List<SiteTarget> targets) => Site(
+        url: url,
+        repoPath: repoPath,
+        name: name,
+        deployRemote: deployRemote,
+        devUrl: devUrl,
+        targets: targets,
+      );
 
   /// The name, or the URL's host if no name is set.
   String get displayName {
@@ -64,17 +153,24 @@ class Site {
           name: text('name'),
           deployRemote: text('deployRemote'),
           devUrl: text('devUrl'),
+          targets: [
+            for (final target
+                in json['targets'] is List ? json['targets'] : const [])
+              if (target is Map<String, dynamic>) SiteTarget.fromJson(target),
+          ],
         ),
       _ => throw const FormatException('Invalid site in settings.'),
     };
   }
 
-  /// The deploy remote and the dev site are only written when they are set.
-  Map<String, String> toJson() => {
+  /// The deploy remote, the dev site and the targets are only written when set.
+  Map<String, dynamic> toJson() => {
         'name': name,
         'url': url,
         'repoPath': repoPath,
         if (deployRemote != autoDeploy) 'deployRemote': deployRemote,
         if (devUrl.isNotEmpty) 'devUrl': devUrl,
+        if (targets.isNotEmpty)
+          'targets': [for (final target in targets) target.toJson()],
       };
 }

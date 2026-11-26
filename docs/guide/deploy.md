@@ -66,7 +66,7 @@ server's deploy log, e.g. in Plesk or with the deploy log page of the
 ## Roll back
 
 For a site on a KMyServer server (its deploy remote is `<site>@<host>:/srv/sites/<site>/repo.git`),
-the site's menu has **Roll back…**. After asking, it runs `site-deploy <site> --rollback` over SSH as
+the project row has a **Roll back** button. After asking, it runs `site-deploy <site> --rollback` over SSH as
 the site user: the live site switches back to the previous release in seconds.
 
 - Only the **code** goes back. The database stays as it is; migrations of the newer release are

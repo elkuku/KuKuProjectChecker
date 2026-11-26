@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
@@ -13,12 +15,15 @@ import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
+import 'helpers.dart';
+
 const vm = Server(
     name: 'Test VM',
     remote: 'vm',
     sshHost: 'localhost',
     sshPort: 2222,
-    sitePort: 8443);
+    sitePort: 8443,
+    domainSuffix: 'example.com');
 
 Map<String, dynamic> _json({bool healthy = false}) => {
       'schema': 1,
@@ -33,7 +38,11 @@ Map<String, dynamic> _json({bool healthy = false}) => {
         'rebootPackages': [],
       },
       'services': [
-        {'name': 'caddy', 'state': healthy ? 'active' : 'inactive', 'ok': healthy},
+        {
+          'name': 'caddy',
+          'state': healthy ? 'active' : 'inactive',
+          'ok': healthy
+        },
       ],
       'failedUnits': [],
       'disk': [
@@ -84,10 +93,9 @@ Map<String, dynamic> _json({bool healthy = false}) => {
     };
 
 Future<void> showScreen(WidgetTester tester,
-        {required FetchServerHealth fetch,
-        RunFunction? run,
-        DeploySiteFromServer? onDeploy,
-        NewSiteFromServer? onNewSite}) async {
+    {required FetchServerHealth fetch,
+    RunFunction? run,
+    NewSiteFromServer? onNewSite}) async {
   // The report is a lazy ListView; a tall test window keeps every section mounted.
   tester.view.physicalSize = const Size(1200, 2600);
   tester.view.devicePixelRatio = 1;
@@ -98,7 +106,6 @@ Future<void> showScreen(WidgetTester tester,
       server: vm,
       fetch: fetch,
       run: run ?? (_, __, ___, {workingDirectory}) async => 0,
-      onDeploy: onDeploy,
       onNewSite: onNewSite,
     ),
   ));
@@ -121,9 +128,40 @@ class _NoSites extends Settings {
   Future<List<Site>> readSettings() async => [];
 }
 
+class _OneSite extends Settings {
+  @override
+  Future<List<Site>> readSettings() async => [
+        const Site(url: 'https://starter.localhost:8443'),
+      ];
+}
+
+class _OneRepo extends Settings {
+  @override
+  Future<List<Site>> readSettings() async => [
+        const Site(
+            name: 'Shop',
+            url: 'https://shop.example.com',
+            repoPath: '~/repos/shop'),
+      ];
+}
+
+class _NoSitesNoWrite extends Settings {
+  int writes = 0;
+
+  @override
+  Future<List<Site>> readSettings() async => [];
+
+  @override
+  Future<File> writeSettings(List<Site> sites) async {
+    writes++;
+    return File('/dev/null');
+  }
+}
+
 void main() {
   group('server status screen', () {
-    testWidgets('shows a healthy report and its sites', (tester) async {
+    testWidgets('shows a healthy host report without a site list',
+        (tester) async {
       await showScreen(
         tester,
         fetch: (_) async => ServerHealth.fromJson(_json(healthy: true)),
@@ -132,11 +170,9 @@ void main() {
       expect(find.text('Server: Test VM'), findsOneWidget);
       expect(find.text('test-vm'), findsOneWidget);
       expect(find.text('Everything looks OK'), findsOneWidget);
-      expect(find.text('starter.localhost'), findsOneWidget);
-
-      await tester.tap(find.text('starter.localhost'));
-      await tester.pumpAndSettle();
-      expect(find.text('No problems'), findsOneWidget);
+      // The server's sites now live in the projects list, not in this pane.
+      expect(find.text('starter.localhost'), findsNothing);
+      expect(find.text('Sites (1)'), findsNothing);
     });
 
     testWidgets('shows problems first and the site reasons', (tester) async {
@@ -148,12 +184,9 @@ void main() {
       expect(find.text('caddy is inactive'), findsOneWidget);
       expect(find.textContaining('Backup stale since'), findsOneWidget);
       expect(find.text('Last mail failed'), findsOneWidget);
-
-      await tester.tap(find.text('starter.localhost'));
-      await tester.pumpAndSettle();
       expect(find.text('starter.localhost: http 000'), findsOneWidget);
-      expect(find.text('starter.localhost: last deploy failed'), findsOneWidget);
-      expect(find.textContaining('Database connection failed'), findsOneWidget);
+      expect(
+          find.text('starter.localhost: last deploy failed'), findsOneWidget);
     });
 
     testWidgets('runs an allowlisted action through the injected runner',
@@ -177,13 +210,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(calls, [
-        [
-          '-p',
-          '2222',
-          'root@localhost',
-          '/usr/local/sbin/server-backup',
-          'run'
-        ]
+        ['-p', '2222', 'root@localhost', '/usr/local/sbin/server-backup', 'run']
       ]);
       expect(find.text('backup ok'), findsOneWidget);
       expect(find.text('Run backup finished'), findsOneWidget);
@@ -222,7 +249,8 @@ void main() {
     });
   });
 
-  testWidgets('the server menu opens the status page', (tester) async {
+  testWidgets('the selected server shows its status on the main screen',
+      (tester) async {
     final fetched = <Server>[];
     await tester.pumpWidget(MyApp(
       preferences: _Preferences(),
@@ -242,13 +270,178 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-        find.byTooltip('Switch the server the sites deploy to'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Server status…'));
-    await tester.pumpAndSettle();
-
     expect(fetched, [vm]);
     expect(find.text('Server: Test VM'), findsOneWidget);
+    expect(find.text('Everything looks OK'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Switch the server the sites deploy to'));
+    await tester.pumpAndSettle();
+    expect(find.text('Server status…'), findsNothing);
+  });
+
+  testWidgets('a wide window shows the status beside the site list',
+      (tester) async {
+    tester.view.physicalSize = const Size(2000, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MyApp(
+      preferences: _Preferences(),
+      services: AppServices(
+        settings: _OneSite(),
+        fetchInfo: (_) async =>
+            const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+        checkRepo: (_, __) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0),
+        readLocal: (_) async => throw Exception('none'),
+        openInTargets: const [],
+        fetchServerHealth: (_) async => ServerHealth.fromJson(_json()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // The server's site status reached the site card, not just the status pane.
+    expect(find.text('offline'), findsOneWidget);
+    expect(find.text('failed'), findsOneWidget);
+    expect(find.text('2 CRITICAL'), findsOneWidget);
+
+    final panel = find.byWidgetPredicate((w) => w is ServerStatusPanel);
+    final row = find.ancestor(
+        of: panel, matching: find.byWidgetPredicate((w) => w is Row));
+    expect(find.descendant(of: row, matching: find.byType(ReorderableListView)),
+        findsOneWidget);
+  });
+
+  testWidgets('server sites without a project are listed temporarily',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final settings = _NoSitesNoWrite();
+    final calls = <List<String>>[];
+
+    await tester.pumpWidget(MyApp(
+      preferences: _Preferences(),
+      services: AppServices(
+        settings: settings,
+        fetchInfo: (_) async =>
+            const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+        checkRepo: (_, __) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0),
+        readLocal: (_) async => throw Exception('none'),
+        openInTargets: const [],
+        fetchServerHealth: (_) async => ServerHealth.fromJson(_json()),
+        run: (_, arguments, onOutput, {workingDirectory}) async {
+          calls.add(arguments);
+          return 0;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No projects yet'), findsNothing);
+    expect(find.text('starter'), findsOneWidget);
+    expect(find.text('starter.localhost'), findsOneWidget);
+    expect(settings.writes, 0);
+
+    await expandRow(tester, 'starter');
+    expect(
+        find.textContaining('not in the projects (temporary)'), findsOneWidget);
+    // The dropdown only opens the site; the allowlisted actions are buttons.
+    expect(find.byTooltip('Open in…'), findsOneWidget);
+    await tapRowButton(tester, 'starter', 'Releases…');
+
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('Releases'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(calls, [
+      [
+        '-p',
+        '2222',
+        'starter@localhost',
+        '/usr/local/sbin/site-deploy',
+        'starter',
+        '--list'
+      ]
+    ]);
+    // A read action does not change anything, so no settings write or reload.
+    expect(settings.writes, 0);
+  });
+
+  testWidgets('a project not on the server can be created and deployed',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final calls = <List<String>>[];
+    final pushes = <(String, String, String)>[];
+    final health = _json(healthy: true)..['sites'] = [];
+
+    await tester.pumpWidget(MyApp(
+      preferences: _Preferences(),
+      services: AppServices(
+        settings: _OneRepo(),
+        fetchInfo: (_) async =>
+            const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+        checkRepo: (_, __) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0),
+        readLocal: (_) async => throw Exception('none'),
+        openInTargets: const [],
+        listRemotes: (_) async => [
+          ('origin', 'https://github.com/elkuku/shop.git'),
+        ],
+        fetchServerHealth: (_) async => ServerHealth.fromJson(health),
+        run: (_, arguments, onOutput, {workingDirectory}) async {
+          calls.add(arguments);
+          onOutput('remote: ok');
+          return 0;
+        },
+        push: (repoPath, remote, branch, onOutput) async {
+          pushes.add((repoPath, remote, branch));
+          onOutput('remote: ok');
+          return 0;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tapRowButton(tester, 'Shop', 'Deploy to Test VM…', expand: true);
+
+    expect(find.text('shop'), findsWidgets);
+    await tester.tap(find.text('Create and deploy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+    await tester.pumpAndSettle();
+
+    expect(calls[0], [
+      '-p',
+      '2222',
+      'root@localhost',
+      '/usr/local/sbin/site-add',
+      'shop',
+      '--domain',
+      'shop.example.com',
+      '--template',
+      'https://github.com/elkuku/shop.git'
+    ]);
+    expect(calls[1], [
+      '-C',
+      RepoStatus.expandHome('~/repos/shop'),
+      'remote',
+      'add',
+      'vm',
+      'ssh://shop@localhost:2222/srv/sites/shop/repo.git'
+    ]);
+    expect(pushes, [(RepoStatus.expandHome('~/repos/shop'), 'vm', 'master')]);
+
+    // The deploy dialog reports the push first; closing it finishes this flow.
+    await tester.tap(find.widgetWithText(FilledButton, 'Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('shop is live on Test VM'), findsOneWidget);
   });
 }

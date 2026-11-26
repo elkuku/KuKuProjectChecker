@@ -2,15 +2,30 @@ import 'package:flutter/material.dart';
 
 import '../support/local_versions.dart';
 import '../support/repo_status.dart';
+import '../support/server_health.dart' show SiteHealth;
 import '../support/site_info.dart';
 import 'repo_status_text.dart';
+import 'site_row_action.dart'
+    show SiteActionBar, SiteActionPlace, SiteRowAction;
 
-/// One site in the list: name, URL, versions, local repository status and its menu.
-class SiteCard extends StatelessWidget {
+/// A KMyServer report for one environment of a project.
+class SiteServerHealth {
+  final String server;
+  final SiteHealth health;
+
+  const SiteServerHealth({required this.server, required this.health});
+}
+
+/// One project row: name, server badges and the common buttons. Versions and
+/// repository details are hidden until the row is expanded.
+class SiteCard extends StatefulWidget {
   final SiteInfo site;
 
-  /// The site's menu button: edit, remove, open in ….
-  final Widget menu;
+  /// Allowlisted actions; only [SiteActionPlace.header] ones are shown collapsed.
+  final List<SiteRowAction> actions;
+
+  /// Overflow menu, reserved for the Open in… actions.
+  final Widget? openInMenu;
 
   /// Shown on the left, to drag the site to another place in the list.
   final Widget? dragHandle;
@@ -21,29 +36,91 @@ class SiteCard extends StatelessWidget {
   /// Deploys the site; null if it has no local repository.
   final void Function(RepoStatus status)? onDeploy;
 
+  /// What each KMyServer reports about this project's environments there.
+  final List<SiteServerHealth> serverHealths;
+
   const SiteCard({
     super.key,
     required this.site,
-    required this.menu,
+    this.actions = const [],
+    this.openInMenu,
     this.dragHandle,
     this.onTap,
     this.onDeploy,
+    this.serverHealths = const [],
   });
 
-  /// From this width on, a site is one compact row instead of a stacked card.
-  static const wideLayout = 900.0;
+  @override
+  State<SiteCard> createState() => _SiteCardState();
+}
+
+class _SiteCardState extends State<SiteCard> {
+  bool expanded = false;
 
   @override
   Widget build(BuildContext context) {
+    final header = widget.actions
+        .where((action) => action.place == SiteActionPlace.header)
+        .toList();
+
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 3, 12, 3),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
-        child: LayoutBuilder(
-          builder: (context, constraints) => constraints.maxWidth >= wideLayout
-              ? _row(context)
-              : _stacked(context),
+        onTap: widget.onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                  widget.dragHandle == null ? 10 : 2, 5, 4, 5),
+              child: Row(
+                children: [
+                  if (widget.dragHandle != null) ...[
+                    widget.dragHandle!,
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _title(context),
+                        if (widget.serverHealths.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          _serverStatuses(context, compact: true),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SiteActionBar(actions: header, compact: true),
+                  if (widget.site.repoStatus != null) ...[
+                    const SizedBox(width: 4),
+                    _Actions(
+                      status: widget.site.repoStatus!,
+                      onShowChanges: widget.onTap,
+                      onDeploy: widget.onDeploy,
+                      compact: true,
+                    ),
+                  ],
+                  const SizedBox(width: 2),
+                  IconButton(
+                    tooltip: expanded ? 'Hide details' : 'Show details',
+                    icon:
+                        Icon(expanded ? Icons.expand_less : Icons.expand_more),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => expanded = !expanded),
+                  ),
+                  if (widget.openInMenu != null) widget.openInMenu!,
+                ],
+              ),
+            ),
+            if (expanded) ...[
+              const Divider(height: 1),
+              _details(context),
+            ],
+          ],
         ),
       ),
     );
@@ -57,13 +134,13 @@ class SiteCard extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          site.name,
+          widget.site.name,
           style:
               theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
           overflow: TextOverflow.ellipsis,
         ),
         Text(
-          site.url,
+          widget.site.url,
           style: theme.textTheme.bodySmall
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           overflow: TextOverflow.ellipsis,
@@ -74,83 +151,127 @@ class SiteCard extends StatelessWidget {
 
   Widget _status(BuildContext context) => DefaultTextStyle.merge(
         style: Theme.of(context).textTheme.bodyMedium,
-        child: RepoStatusText(status: site.repoStatus!),
+        child: RepoStatusText(status: widget.site.repoStatus!),
       );
 
-  /// Wide windows: name | versions | repository status | buttons | menu.
-  Widget _row(BuildContext context) {
-    // Fixed column widths, so the columns line up from row to row.
-    return Padding(
-      padding: EdgeInsets.fromLTRB(dragHandle == null ? 14 : 4, 6, 4, 6),
-      child: Row(
-        children: [
-          if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 6)],
-          Expanded(child: _title(context)),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 310,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: _Versions(site: site, compact: true),
+  /// On a collapsed row the server name is a small label in front of its badges,
+  /// so the same site on two servers can be told apart.
+  Widget _serverStatuses(BuildContext context, {required bool compact}) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final entry in widget.serverHealths) ...[
+          if (widget.serverHealths.length > 1)
+            Text(
+              entry.server,
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 300,
-            child: site.repoStatus == null
-                ? const SizedBox.shrink()
-                : _status(context),
-          ),
-          SizedBox(
-            width: 132,
-            child: site.repoStatus == null
-                ? const SizedBox.shrink()
-                : Align(
-                    alignment: Alignment.centerRight,
-                    child: _Actions(
-                      status: site.repoStatus!,
-                      onShowChanges: onTap,
-                      onDeploy: onDeploy,
-                      compact: true,
-                    ),
-                  ),
-          ),
-          menu,
+          ServerSiteStatus(health: entry.health, compact: compact),
+        ],
+      ],
+    );
+  }
+
+  Widget _details(BuildContext context) {
+    final actions = widget.actions
+        .where((action) => action.place == SiteActionPlace.details)
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 8, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.serverHealths.isNotEmpty)
+            _serverStatuses(context, compact: false),
+          const SizedBox(height: 8),
+          _Versions(site: widget.site),
+          if (widget.site.repoStatus != null) ...[
+            const SizedBox(height: 8),
+            _status(context),
+          ],
+          if (actions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SiteActionBar(actions: actions),
+          ],
         ],
       ),
     );
   }
+}
 
-  /// Narrow windows: everything below each other.
-  Widget _stacked(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(dragHandle == null ? 14 : 4, 8, 4, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 6)],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _title(context),
-                const SizedBox(height: 6),
-                _Versions(site: site),
-                if (site.repoStatus != null) ...[
-                  const SizedBox(height: 6),
-                  _status(context),
-                  _Actions(
-                    status: site.repoStatus!,
-                    onShowChanges: onTap,
-                    onDeploy: onDeploy,
-                  ),
-                ],
-              ],
-            ),
+/// What the selected KMyServer reports about a site: HTTP, last deploy and recent CRITICALs.
+/// The site's own /system/info/ stays in [_Versions]; this is the server-side view of it.
+class ServerSiteStatus extends StatelessWidget {
+  final SiteHealth health;
+
+  /// Less padding, for the row layout.
+  final bool compact;
+
+  const ServerSiteStatus(
+      {super.key, required this.health, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final error = (colors.errorContainer, colors.onErrorContainer);
+    final warning = _warningColors(context);
+
+    final httpOk = health.http >= 200 && health.http < 400;
+    final deploy = health.deploy;
+    final deployColors = switch (deploy.state) {
+      'ok' => null,
+      'failed' => error,
+      'running' => warning,
+      _ => warning,
+    };
+
+    return Wrap(
+      spacing: compact ? 4 : 6,
+      runSpacing: compact ? 4 : 6,
+      children: [
+        InfoBadge(
+          icon: Icons.public,
+          text: health.http == 0 ? 'offline' : 'HTTP ${health.http}',
+          tooltip: [
+            '${health.domain}: ${httpOk ? 'HTTP ${health.http}' : 'not reachable (HTTP ${health.http})'}',
+            if (health.certificateDays != null)
+              'Certificate: ${health.certificateDays}d (${health.issuer})',
+            if (health.problems.isNotEmpty)
+              'Problems: ${health.problems.join('; ')}',
+          ].join('\n'),
+          background: httpOk ? null : error.$1,
+          foreground: httpOk ? null : error.$2,
+          dense: compact,
+        ),
+        InfoBadge(
+          icon: Icons.rocket_launch_outlined,
+          text: compact ? deploy.state : 'deploy ${deploy.state}',
+          tooltip: [
+            'Last deploy on the server: ${deploy.state}',
+            if (deploy.when.isNotEmpty) 'When: ${deploy.when}',
+            if (health.release.isNotEmpty)
+              'Release ${health.release}${health.revision.isEmpty ? '' : ' (${health.revision})'}',
+          ].join('\n'),
+          background: deployColors?.$1,
+          foreground: deployColors?.$2,
+          dense: compact,
+        ),
+        if (health.critical24h > 0)
+          InfoBadge(
+            icon: Icons.error_outline,
+            text: '${health.critical24h} CRITICAL',
+            tooltip: [
+              '${health.critical24h} CRITICAL errors in the last 24 h',
+              if (health.lastCritical != null) 'Last: ${health.lastCritical}',
+            ].join('\n'),
+            background: error.$1,
+            foreground: error.$2,
+            dense: compact,
           ),
-          menu,
-        ],
-      ),
+      ],
     );
   }
 }
@@ -306,10 +427,7 @@ class _CountButton extends StatelessWidget {
 class _Versions extends StatelessWidget {
   final SiteInfo site;
 
-  /// "SF" instead of "Symfony" and "DB" instead of the database name, for the row layout.
-  final bool compact;
-
-  const _Versions({required this.site, this.compact = false});
+  const _Versions({required this.site});
 
   @override
   Widget build(BuildContext context) {
@@ -343,8 +461,8 @@ class _Versions extends StatelessWidget {
         return FutureBuilder<LocalVersions>(
           future: site.localVersions,
           builder: (context, local) => Wrap(
-            spacing: compact ? 4 : 6,
-            runSpacing: compact ? 4 : 6,
+            spacing: 6,
+            runSpacing: 6,
             children: _badges(context, info, local.data),
           ),
         );
@@ -369,7 +487,6 @@ class _Versions extends StatelessWidget {
         label: 'PHP',
         live: info.phpVersion,
         local: local?.php,
-        compact: compact,
         // Patch releases differ all the time between machines.
         maxParts: 2,
       ),
@@ -378,14 +495,12 @@ class _Versions extends StatelessWidget {
         label: 'Symfony',
         live: info.sfVersion,
         local: local?.symfony,
-        compact: compact,
       ),
       if (info.dbVersion != null)
         _VersionBadge(
           icon: Icons.storage,
           label: dbName,
           live: info.dbVersion!,
-          compact: compact,
           local: local?.dbVersion == null
               ? null
               : local!.dbPlatform == info.dbPlatform
@@ -397,14 +512,12 @@ class _Versions extends StatelessWidget {
               : local!.dbPlatform == info.dbPlatform &&
                   LocalVersions.matches(local.dbVersion!, info.dbVersion!),
         ),
-      if (info.lastDeploy != null)
-        _DeployBadge(deploy: info.lastDeploy!, compact: compact),
+      if (info.lastDeploy != null) _DeployBadge(deploy: info.lastDeploy!),
       if (site.devInfo != null)
         DevBadge(
           url: site.devUrl!,
           info: site.devInfo!,
           upstreamTime: site.upstreamTime,
-          compact: compact,
         ),
     ];
   }
@@ -418,14 +531,12 @@ class DevBadge extends StatelessWidget {
 
   /// The time of the newest upstream commit; null without a local repository.
   final Future<DateTime?>? upstreamTime;
-  final bool compact;
 
   const DevBadge({
     super.key,
     required this.url,
     required this.info,
     this.upstreamTime,
-    this.compact = false,
   });
 
   @override
@@ -443,7 +554,6 @@ class DevBadge extends StatelessWidget {
             tooltip: 'Dev site $url\nNot reachable',
             background: error.$1,
             foreground: error.$2,
-            dense: compact,
           );
         }
         if (!snapshot.hasData) return const SizedBox.shrink();
@@ -501,7 +611,6 @@ class DevBadge extends StatelessWidget {
               ].join('\n'),
               background: colorsOf?.$1,
               foreground: colorsOf?.$2,
-              dense: compact,
             );
           },
         );
@@ -523,9 +632,6 @@ class _VersionBadge extends StatelessWidget {
   /// Overrides the comparison of [local] and [live].
   final bool? matches;
 
-  /// Only the icon and the number; the tooltip names it.
-  final bool compact;
-
   const _VersionBadge({
     required this.icon,
     required this.label,
@@ -533,7 +639,6 @@ class _VersionBadge extends StatelessWidget {
     this.local,
     this.maxParts = 3,
     this.matches,
-    this.compact = false,
   });
 
   @override
@@ -558,11 +663,10 @@ class _VersionBadge extends StatelessWidget {
 
     return InfoBadge(
       icon: same ? icon : Icons.compare_arrows,
-      text: compact ? short : '$label $short',
+      text: '$label $short',
       tooltip: tooltip,
       background: same ? null : warning.$1,
       foreground: same ? null : warning.$2,
-      dense: compact,
     );
   }
 }
@@ -572,17 +676,13 @@ class _VersionBadge extends StatelessWidget {
 class _DeployBadge extends StatelessWidget {
   final LastDeploy deploy;
 
-  /// "7m" instead of "7m ago".
-  final bool compact;
-
-  const _DeployBadge({required this.deploy, this.compact = false});
+  const _DeployBadge({required this.deploy});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final at = deploy.at?.toLocal();
     final ago = at == null ? 'unknown' : _DeployBadge.ago(at, DateTime.now());
-    final when = compact ? ago.replaceFirst(' ago', '') : ago;
 
     final (background, foreground, state) = switch (deploy.status) {
       'ok' => (null, null, 'deployed'),
@@ -596,14 +696,13 @@ class _DeployBadge extends StatelessWidget {
 
     return InfoBadge(
       icon: Icons.rocket_launch_outlined,
-      text: when,
+      text: ago,
       tooltip: [
         'Last deploy: $state',
         if (at != null) _dateTime(at),
       ].join('\n'),
       background: background,
       foreground: foreground,
-      dense: compact,
     );
   }
 

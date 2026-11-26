@@ -1,10 +1,19 @@
 # The site list
 
-Each site is a card with its name, its address, its versions and, if a local repository is set,
-the state of that repository.
+Each project is one compact row with its name, its address, the buttons you need most and, when a
+KMyServer reports about it, its server badges. Versions and repository details are hidden until you
+expand the row; the server status always stays beside the list.
 
 ![The site list](../screenshots/01_sites-dark.png){.theme-dark}
 ![The site list](../screenshots/01_sites-light.png){.theme-light}
+
+![Compact rows](../screenshots/09_compact_rows-dark.png){.theme-dark}
+![Compact rows](../screenshots/09_compact_rows-light.png){.theme-light}
+
+Tap **Show details** (▾) to see the versions, the repository status and the rest of the actions:
+
+![Expanded row](../screenshots/10_expanded_row-dark.png){.theme-dark}
+![Expanded row](../screenshots/10_expanded_row-light.png){.theme-light}
 
 ## Versions
 
@@ -58,22 +67,27 @@ The **deploy remote** is the one chosen for the site in its **Edit…** dialog; 
 the first remote that is not `origin`, not an HTTP(S) address and not on a code host like GitHub,
 e.g. a Plesk or Dokku git remote. See [Deploying](./deploy).
 
-## Each site
+## Each project
 
-- **⋮⋮** on the left: drag the site to another place in the list.
-- **⋮** on the right: **Edit…** and **Remove** the site, and open it in the browser or the
-  repository in other apps, see [Managing sites](./settings) and [Open in …](./open-in).
+- **⋮⋮** on the left: drag the project to another place in the list.
+- **▾ / ▴**: show or hide the details (versions, repository status and the remaining actions).
+- **✏️ Edit…** and **▤ Environments…**: manage the project and its environments
+  ([Managing sites](./settings), [Servers](./servers)).
+- **▾ Open in…**: only open actions — the site or repository in the browser and other apps,
+  see [Open in …](./open-in). Management actions are buttons, never menu entries.
+- When a KMyServer knows the project, **Releases** and **Roll back** are buttons in the row too;
+  logs, removal and the actions of other servers are in the expanded details.
 
 ## Buttons
 
-Every site with a local repository has two buttons. They show the number of files or commits
+Every project with a local repository has two buttons. They show the number of files or commits
 pending, and are greyed out when there is nothing to do:
 
 - **Changes** (📄 3): the uncommitted files, see [Uncommitted changes](./changes).
 - **Deploy** (🚀 2): pushes the commits to the deploy remote, see [Deploying](./deploy).
 
-In a wide window each site is one compact row and the buttons show only the icon and the number;
-hover over them for what they do. In a narrow window the site is a card with labeled buttons.
+Collapsed rows show only their icons and numbers; hover over them for the full text. Expanded
+details use labeled buttons.
 
 ::: info Nothing is fetched
 The app never contacts the remotes, so it never asks for an SSH passphrase. "Unpushed" and

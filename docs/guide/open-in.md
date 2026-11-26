@@ -1,14 +1,16 @@
 # Open in …
 
-The ⋮ menu of a site opens it in other apps. Its first entries edit or remove the site,
-see [Managing sites](./settings).
+The **Open in…** dropdown of a project contains only open actions. **Edit…**, **Environments…**,
+**Remove** and the server actions are buttons on the row, see [Managing sites](./settings). When
+the project has several environments, every address gets its own entry.
 
 ![The Open in menu](../screenshots/02_open_in_menu-dark.png){.theme-dark}
 ![The Open in menu](../screenshots/02_open_in_menu-light.png){.theme-light}
 
 | Entry | Opens |
 |---|---|
-| **Open in browser** | The site. |
+| **Open in browser** | The project's main site. |
+| **Open `<environment>` (`<domain>`)** | Another environment, e.g. `plesk` or a KMyServer target; see [Servers and new sites](./servers). |
 | **File manager** | The repository folder (`xdg-open`, e.g. Dolphin). |
 | **Terminal** | A terminal in the repository folder: Konsole, GNOME Terminal, Xfce Terminal or kitty. |
 | **PhpStorm** | The project in PhpStorm. |

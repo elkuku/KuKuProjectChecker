@@ -31,7 +31,7 @@ features:
     details: Pushes the new commits to the deploy remote, e.g. Plesk, after showing what the push includes.
   - icon: 🖥️
     title: Server status
-    details: Reads a KMyServer health report and runs allowlisted actions: backup, test mail, roll back, release list and site logs — with confirmations and streamed output.
+    details: Shows a KMyServer health report beside the project list when that server is selected, with server-side status and actions on the project cards, temporary entries for server-only sites, and one-click creation plus deploy for projects that are not on the server. Host actions (backup, test mail) stay in the status pane, all with confirmations and streamed output.
   - icon: 🧭
     title: Open in …
     details: Opens a project in the browser, the file manager, a terminal, PhpStorm, VS Code, Kate or gitk.

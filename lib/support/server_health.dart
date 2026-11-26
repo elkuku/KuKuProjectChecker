@@ -53,7 +53,8 @@ class ServerHealth {
       ],
       failedUnits: _strings(json['failedUnits']),
       disk: [
-        for (final value in _list(json['disk'])) DiskHealth.fromJson(_map(value)),
+        for (final value in _list(json['disk']))
+          DiskHealth.fromJson(_map(value)),
       ],
       memory: MemoryHealth.fromJson(_map(json['memory'])),
       updates: UpdatesHealth.fromJson(_map(json['updates'])),
@@ -61,7 +62,8 @@ class ServerHealth {
       backup: BackupHealth.fromJson(_map(json['backup'])),
       mail: MailHealth.fromJson(_map(json['mail'])),
       sites: [
-        for (final value in _list(json['sites'])) SiteHealth.fromJson(_map(value)),
+        for (final value in _list(json['sites']))
+          SiteHealth.fromJson(_map(value)),
       ],
     );
   }

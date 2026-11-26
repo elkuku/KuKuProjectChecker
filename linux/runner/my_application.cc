@@ -47,7 +47,10 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "KuKu Project Checker");
   }
 
-  gtk_window_set_default_size(window, 1000, 760);
+  // The main screen keeps the server status beside the site list, so don't let the
+  // window shrink below the width both panes need (see _body in lib/main.dart).
+  gtk_window_set_default_size(window, 1200, 800);
+  gtk_widget_set_size_request(GTK_WIDGET(window), 1100, 600);
   gtk_widget_show(GTK_WIDGET(window));
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();

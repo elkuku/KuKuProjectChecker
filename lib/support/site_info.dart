@@ -1,5 +1,6 @@
 import 'local_versions.dart';
 import 'repo_status.dart';
+import 'site.dart' show Site, SiteTarget;
 
 class SiteInfo {
   final String url;
@@ -30,6 +31,15 @@ class SiteInfo {
   /// upstream branch, e.g. origin/master) was made; null without a dev site or repository.
   final Future<DateTime?>? upstreamTime;
 
+  /// The project's environments, each with its own server, URL and deploy remote.
+  final List<SiteTarget> targets;
+
+  /// The setting this info was built from, so edits can write targets back.
+  final Site? site;
+
+  /// The legacy deploy choice, used when there are no explicit environments.
+  final String deployRemote;
+
   const SiteInfo({
     required this.url,
     required this.name,
@@ -41,7 +51,18 @@ class SiteInfo {
     this.devUrl,
     this.devInfo,
     this.upstreamTime,
+    this.targets = const [],
+    this.site,
+    this.deployRemote = '',
   });
+
+  /// The target for [server] (a [Server.name]), or null if this project has none there.
+  SiteTarget? targetFor(String server) {
+    for (final target in targets) {
+      if (target.server == server) return target;
+    }
+    return null;
+  }
 }
 
 /// How a dev site that deploys itself from the upstream branch is doing.

@@ -11,6 +11,8 @@ import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
+import 'helpers.dart';
+
 class _MemorySettings extends Settings {
   List<Site> sites;
 
@@ -149,6 +151,7 @@ void main() {
           dev: () async => _info(),
           upstream: _deployedAt.subtract(const Duration(hours: 1)));
 
+      await expandRow(tester, 'Shop');
       expect(find.textContaining('dev '), findsOneWidget);
       expect(find.text('dev behind'), findsNothing);
     });
@@ -157,6 +160,7 @@ void main() {
       await showApp(tester,
           dev: () async => _info(),
           upstream: _deployedAt.add(const Duration(minutes: 10)));
+      await expandRow(tester, 'Shop');
 
       expect(find.text('dev behind'), findsOneWidget);
       final tooltip = tester.widget<Tooltip>(find.ancestor(
@@ -168,12 +172,14 @@ void main() {
 
     testWidgets('a dev site whose deploy failed', (tester) async {
       await showApp(tester, dev: () async => _info(status: 'errors'));
+      await expandRow(tester, 'Shop');
       expect(find.text('dev errors'), findsOneWidget);
     });
 
     testWidgets('an unreachable dev site', (tester) async {
       await showApp(tester,
           dev: () => Future.error(const SocketException('refused')));
+      await expandRow(tester, 'Shop');
       expect(find.text('dev offline'), findsOneWidget);
     });
 
@@ -181,12 +187,12 @@ void main() {
         (tester) async {
       await showApp(tester, dev: () async => _info());
 
-      await tester.tap(find.byTooltip('Edit, remove or open the site'));
-      await tester.pumpAndSettle();
+      await openOpenInMenu(tester, 'Shop');
       expect(find.text('Open dev site'), findsOneWidget);
-
-      await tester.tap(find.text('Edit…'));
+      await tester.tapAt(Offset.zero);
       await tester.pumpAndSettle();
+
+      await tapRowButton(tester, 'Shop', 'Edit…');
       final field = find.widgetWithText(TextField, 'Dev site URL');
       expect(tester.widget<TextField>(field).controller!.text,
           'https://dev.shop.example.com');

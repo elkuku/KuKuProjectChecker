@@ -6,20 +6,62 @@ import 'support/kmyserver.dart';
 import 'support/preferences.dart';
 import 'support/repo_status.dart';
 import 'support/server.dart';
+import 'support/server_actions.dart';
 import 'support/site.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
 import 'screens/server_status_screen.dart';
-import 'support/server_health.dart' show SiteHealth;
+import 'support/server_health.dart' show ServerHealth, SiteHealth;
 import 'widgets/deploy_dialog.dart';
+import 'widgets/deploy_to_server_dialog.dart';
+import 'widgets/environments_dialog.dart';
 import 'widgets/new_site_dialog.dart';
 import 'widgets/rollback_dialog.dart';
 import 'widgets/servers_dialog.dart';
+import 'widgets/server_action_dialog.dart';
+import 'widgets/server_site_card.dart';
 import 'widgets/site_dialog.dart';
 import 'widgets/site_card.dart';
+import 'widgets/site_row_action.dart';
 
 void main() {
   runApp(const MyApp());
+}
+
+IconData _serverActionIcon(ServerAction action) => switch (action.id) {
+      'releases' => Icons.list_alt,
+      'rollback' => Icons.history,
+      'logDeploy' ||
+      'logApp' ||
+      'logPhp' ||
+      'logCaddy' =>
+        Icons.article_outlined,
+      'remove' => Icons.delete_outline,
+      _ => Icons.settings_outlined,
+    };
+
+PopupMenuItem<Future<void> Function()> _menuItem(
+        IconData icon, String label, Future<void> Function() action) =>
+    PopupMenuItem(
+      value: action,
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(label),
+        contentPadding: EdgeInsets.zero,
+      ),
+    );
+
+/// Runs an Open in… item and shows failures instead of swallowing them.
+Future<void> _runOpenAction(
+    BuildContext context, Future<void> Function() open) async {
+  try {
+    await open();
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Could not open it: $e')),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -130,6 +172,11 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Server> servers = [];
   String activeServer = '';
 
+  /// Health reports of all configured KMyServers, keyed by [Server.name]. The status pane
+  /// shows the active one; every project card can show its own target on any of them.
+  final Map<String, Future<ServerHealth>> _health = {};
+  final Map<String, List<SiteHealth>> _siteHealth = {};
+
   AppServices get services => widget.services;
 
   Server? get _active =>
@@ -142,7 +189,9 @@ class _MyHomePageState extends State<MyHomePage> {
     loadInfos();
     // With an active server the sites deploy elsewhere: read them again once it is known.
     _loadServers().then((_) {
-      if (mounted && activeServer.isNotEmpty) loadInfos();
+      if (!mounted) return;
+      if (activeServer.isNotEmpty) loadInfos();
+      _reloadHealth();
     });
   }
 
@@ -163,9 +212,35 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _saveServers() async =>
       widget.preferences?.writeServers(servers, activeServer);
 
+  /// Reads the health report of every configured KMyServer. One future per server feeds
+  /// the status pane (when that server is active) and the matching project cards.
+  void _reloadHealth() {
+    final futures = <String, Future<ServerHealth>>{
+      for (final server in servers)
+        if (server.isKMyServer) server.name: services.fetchServerHealth(server),
+    };
+    setState(() {
+      _health
+        ..clear()
+        ..addAll(futures);
+      _siteHealth.clear();
+    });
+
+    for (final entry in futures.entries) {
+      entry.value.then((report) {
+        if (!mounted || _health[entry.key] != entry.value) return;
+        setState(() => _siteHealth[entry.key] = report.sites);
+      }, onError: (_) {
+        if (!mounted || _health[entry.key] != entry.value) return;
+        setState(() => _siteHealth[entry.key] = []);
+      });
+    }
+  }
+
   /// All sites deploy to [name]'s remote ('' = each site's own deploy remote).
   Future<void> _switchServer(String name) async {
     setState(() => activeServer = name);
+    _reloadHealth();
     await _saveServers();
     loadInfos();
   }
@@ -177,59 +252,177 @@ class _MyHomePageState extends State<MyHomePage> {
       servers = edited;
       if (_active == null) activeServer = '';
     });
+    _reloadHealth();
     await _saveServers();
     loadInfos();
   }
 
-  /// Opens the read-only status report of the active (or only) KMyServer server.
-  Future<void> _showServerStatus() async {
-    final candidates = servers.where((server) => server.isKMyServer).toList();
-    final server = _active?.isKMyServer == true
-        ? _active
-        : candidates.length == 1
-            ? candidates.single
-            : null;
+  List<Server> get _kmyServers =>
+      servers.where((server) => server.isKMyServer).toList();
 
-    if (server == null) {
-      _showMessage(candidates.isEmpty
-          ? 'Add a KMyServer server first (Servers…, with its SSH host)'
-          : 'Choose a KMyServer server in the app bar first');
-      return;
+  /// The environment of [info] on [server]. A project written before environments
+  /// existed has one implicit target, used only while that server is active.
+  SiteTarget? _targetForServer(SiteInfo info, Server server) {
+    if (info.targets.isEmpty) {
+      return _active?.name == server.name
+          ? SiteTarget(
+              name: info.name,
+              url: info.url,
+              deployRemote: info.deployRemote,
+            )
+          : null;
     }
-
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ServerStatusScreen(
-        server: server,
-        fetch: services.fetchServerHealth,
-        run: services.run,
-        onDeploy: _deployFromServerStatus,
-        onNewSite: _newSite,
-      ),
-    ));
+    return info.targetFor(server.name);
   }
 
-  /// The status page's Deploy button uses the same dialog as the site card: a git push from
-  /// the local repository. Only sites that are in the app's settings can be deployed here.
-  Future<bool> _deployFromServerStatus(SiteHealth site) async {
-    final index = siteInfos.indexWhere((info) =>
-        info.name == site.name || Uri.tryParse(info.url)?.host == site.domain);
-    if (index < 0 || siteInfos[index].repoPath == null) {
-      _showMessage('No local repository is set for ${site.domain}');
-      return false;
-    }
+  /// A server site and an environment are the same when their address or name matches.
+  static bool _sameTarget(SiteTarget target, SiteHealth health) {
+    final host = target.domain;
+    if (host.isNotEmpty && health.domain == host) return true;
+    if (health.name == target.name) return true;
+    if (host.isNotEmpty && health.name == host.split('.').first) return true;
+    return false;
+  }
 
-    final repoPath = siteInfos[index].repoPath!;
-    final status = await services.checkRepo(repoPath, sites[index].deployRemote);
-    if (!mounted) return false;
-    final pushed = await showDeployDialog(
+  bool _matchesOn(Server server, SiteInfo info, SiteHealth health) {
+    final target = _targetForServer(info, server);
+    return target != null && _sameTarget(target, health);
+  }
+
+  SiteHealth? _healthFor(Server server, SiteInfo info) {
+    for (final health in _siteHealth[server.name] ?? const <SiteHealth>[]) {
+      if (_matchesOn(server, info, health)) return health;
+    }
+    return null;
+  }
+
+  /// The servers where this project was found, active server first.
+  List<MapEntry<Server, SiteHealth>> _matchedServers(SiteInfo info) {
+    final matched = <Server, SiteHealth>{
+      for (final server in _kmyServers)
+        if (_healthFor(server, info) case final health?) server: health,
+    };
+    final ordered = <MapEntry<Server, SiteHealth>>[];
+    final active = _active;
+    if (active != null && matched.containsKey(active)) {
+      ordered.add(MapEntry(active, matched[active]!));
+    }
+    ordered.addAll(matched.entries.where((entry) => entry.key != active));
+    return ordered;
+  }
+
+  /// Every report shown on a project card: one per environment/server match.
+  List<SiteServerHealth> _cardHealths(SiteInfo info) => [
+        for (final entry in _matchedServers(info))
+          SiteServerHealth(server: entry.key.name, health: entry.value),
+      ];
+
+  /// Runs one allowlisted server action for the given environment.
+  Future<void> _runServerAction(
+      ServerAction action, Server server, SiteHealth health) async {
+    final done = await showServerActionDialog(
       context,
-      siteName: siteInfos[index].name,
+      action: action,
+      server: server,
+      siteName: health.name,
+      run: services.run,
+    );
+    if (!mounted || !done) return;
+    if (action.risk != ServerActionRisk.read) {
+      loadInfos();
+      _reloadHealth();
+    }
+  }
+
+  /// Writes the edited environments back to the setting [info] came from.
+  void _storeTargets(SiteInfo info, List<SiteTarget> targets) {
+    var index = info.site == null
+        ? -1
+        : sites.indexWhere((site) => identical(site, info.site));
+    if (index < 0) {
+      index = sites.indexWhere(
+          (site) => site.url == info.url && site.repoPath == info.repoPath);
+    }
+    if (index >= 0) sites[index] = sites[index].withTargets(targets);
+  }
+
+  Future<void> _editEnvironments(SiteInfo info) async {
+    final current = info.targets.isNotEmpty
+        ? info.targets
+        : info.site?.environments ??
+            [
+              SiteTarget(
+                  name: info.name,
+                  url: info.url,
+                  deployRemote: info.deployRemote)
+            ];
+    final edited = await showEnvironmentsDialog(
+      context,
+      targets: current,
+      servers: servers,
+    );
+    if (edited == null || !mounted) return;
+    _storeTargets(info, edited);
+    await _save();
+    if (!mounted) return;
+    loadInfos();
+    _reloadHealth();
+  }
+
+  /// Creates a site on [server] for a project that is not there yet, then deploys it.
+  /// The chosen domain/name is recorded as the project's environment on that server.
+  Future<void> _deployToServer(
+      SiteInfo info, Server server, SiteTarget? target) async {
+    final repoPath = info.repoPath;
+    if (!server.isKMyServer || repoPath == null) return;
+
+    final remotes = await services.listRemotes(repoPath);
+    final status = await services.checkRepo(repoPath, server.remote);
+    if (!mounted) return;
+
+    final domain =
+        target?.domain ?? server.siteDomain(suggestedSiteName(info.name));
+    final result = await showDeployToServerDialog(
+      context,
+      server: server,
+      site: info,
+      domain: domain,
       repoPath: repoPath,
       status: status,
+      remotes: remotes,
+      run: services.run,
       push: services.push,
     );
-    if (pushed && mounted) loadInfos();
-    return pushed;
+    if (result == null || !mounted) return;
+
+    final targets = [
+      ...info.targets.isNotEmpty
+          ? info.targets
+          : info.site?.environments ??
+              [
+                SiteTarget(
+                    name: info.name,
+                    url: info.url,
+                    deployRemote: info.deployRemote)
+              ],
+    ];
+    final index = targets.indexWhere((item) => item.server == server.name);
+    final updated = SiteTarget(
+      name: index < 0 ? server.name : targets[index].name,
+      server: server.name,
+      url: server.siteUrl(result.domain),
+      deployRemote: server.remote,
+    );
+    if (index < 0) {
+      targets.add(updated);
+    } else {
+      targets[index] = updated;
+    }
+    _storeTargets(info, targets);
+    await _save();
+    if (!mounted) return;
+    loadInfos();
+    _reloadHealth();
   }
 
   Future<void> _newSite() async {
@@ -249,11 +442,23 @@ class _MyHomePageState extends State<MyHomePage> {
     );
     if (site == null || !mounted) return;
 
+    final server = _active?.isKMyServer == true ? _active : null;
+    final created = server == null
+        ? site
+        : site.withTargets([
+            SiteTarget(
+              name: server.name,
+              server: server.name,
+              url: site.url,
+              deployRemote: server.remote,
+            )
+          ]);
     setState(() {
-      sites.add(site);
-      siteInfos.add(_siteInfo(site));
+      sites.add(created);
+      siteInfos.add(_siteInfo(created));
     });
     await _save();
+    _reloadHealth();
   }
 
   /// Reads the sites and everything about them again.
@@ -279,6 +484,22 @@ class _MyHomePageState extends State<MyHomePage> {
     final repoPath =
         site.repoPath.isEmpty ? null : RepoStatus.expandHome(site.repoPath);
 
+    // Environments win over the old global override. A legacy site without targets
+    // keeps the previous behaviour: the active server is its deploy target.
+    final targets = site.targets.isNotEmpty ? site.targets : site.environments;
+    final activeTarget = _active == null
+        ? null
+        : site.targets.isEmpty
+            ? null
+            : site.targets
+                .where((target) => target.server == _active!.name)
+                .firstOrNull;
+    final deployRemote = site.targets.isEmpty
+        ? (_active != null && site.deployRemote != Site.noDeploy
+            ? _active!.remote
+            : site.deployRemote)
+        : (activeTarget?.deployRemote ?? site.targets.first.deployRemote);
+
     final info = SiteInfo(
       url: site.url,
       name: site.displayName,
@@ -286,13 +507,7 @@ class _MyHomePageState extends State<MyHomePage> {
       systemInfo: systemInfo,
       repoStatus: repoPath == null
           ? null
-          : (services.checkRepo(
-              site.repoPath,
-              // The active server's remote, unless the site never deploys.
-              _active != null && site.deployRemote != Site.noDeploy
-                  ? _active!.remote
-                  : site.deployRemote)
-            ..ignore()),
+          : (services.checkRepo(site.repoPath, deployRemote)..ignore()),
       localVersions:
           repoPath == null ? null : (services.readLocal(repoPath)..ignore()),
       repoPath: repoPath,
@@ -303,6 +518,9 @@ class _MyHomePageState extends State<MyHomePage> {
       upstreamTime: site.devUrl.isEmpty || repoPath == null
           ? null
           : (services.upstreamTime(repoPath)..ignore()),
+      targets: targets,
+      site: site,
+      deployRemote: site.deployRemote,
     );
     info.repoStatus?.then((status) {
       final server = status.deployUrl == null
@@ -393,57 +611,166 @@ class _MyHomePageState extends State<MyHomePage> {
     await _save();
   }
 
-  /// The menu of a site: edit or remove it, open the site in the browser, and its
-  /// repository in the installed apps if a local repository is set.
-  Widget _siteMenu(int index) {
-    final siteInfo = siteInfos[index];
-    final repoPath = siteInfo.repoPath;
+  /// Buttons for one project. Common actions stay in the collapsed row; the rest
+  /// are shown when the row is expanded. The Open in… actions have their own menu.
+  List<SiteRowAction> _siteActions(int index) {
+    final info = siteInfos[index];
+    final repoPath = info.repoPath;
+    final kmyServers = _kmyServers;
+    final matched = _matchedServers(info);
+    String label(String base, Server server) =>
+        kmyServers.length > 1 ? '$base on ${server.name}…' : '$base…';
 
-    PopupMenuItem<Future<void> Function()> item(
-            IconData icon, String label, Future<void> Function() open) =>
-        PopupMenuItem(
-          value: open,
-          child: ListTile(
-            leading: Icon(icon),
-            title: Text(label),
-            contentPadding: EdgeInsets.zero,
-          ),
-        );
+    final actions = <SiteRowAction>[
+      SiteRowAction(Icons.edit_outlined, 'Edit…', () => _editSite(index)),
+      SiteRowAction(Icons.layers_outlined, 'Environments…',
+          () => _editEnvironments(info)),
+    ];
+
+    // The most relevant server's two common actions stay in the collapsed row.
+    if (matched.isNotEmpty) {
+      final first = matched.first;
+      actions.add(SiteRowAction(
+        Icons.list_alt,
+        label('Releases', first.key),
+        () => _runServerAction(ServerAction.releases, first.key, first.value),
+      ));
+      actions.add(SiteRowAction(
+        Icons.history,
+        label('Roll back', first.key),
+        () => _runServerAction(ServerAction.rollback, first.key, first.value),
+      ));
+    } else if (kmyserverSites[info] != null) {
+      actions.add(SiteRowAction(
+        Icons.history,
+        'Roll back…',
+        () => _rollback(info, kmyserverSites[info]!),
+      ));
+    }
+
+    for (final (position, entry) in matched.indexed) {
+      final server = entry.key;
+      final health = entry.value;
+      if (position > 0) {
+        actions.add(SiteRowAction(
+          Icons.list_alt,
+          label('Releases', server),
+          () => _runServerAction(ServerAction.releases, server, health),
+          place: SiteActionPlace.details,
+        ));
+        actions.add(SiteRowAction(
+          Icons.history,
+          label('Roll back', server),
+          () => _runServerAction(ServerAction.rollback, server, health),
+          place: SiteActionPlace.details,
+        ));
+      }
+      for (final log in ServerAction.logActions) {
+        actions.add(SiteRowAction(
+          _serverActionIcon(log),
+          label(log.label, server),
+          () => _runServerAction(log, server, health),
+          place: SiteActionPlace.details,
+        ));
+      }
+      actions.add(SiteRowAction(
+        Icons.delete_outline,
+        'Remove site on ${server.name}…',
+        () => _runServerAction(ServerAction.remove, server, health),
+        place: SiteActionPlace.details,
+        danger: true,
+      ));
+    }
+
+    if (repoPath != null) {
+      for (final server in kmyServers) {
+        if (matched.any((entry) => entry.key == server)) continue;
+        actions.add(SiteRowAction(
+          Icons.rocket_launch,
+          'Deploy to ${server.name}…',
+          () => _deployToServer(info, server, _targetForServer(info, server)),
+          place: SiteActionPlace.details,
+          filled: true,
+        ));
+      }
+    }
+
+    actions.add(SiteRowAction(
+      Icons.delete_outline,
+      'Remove',
+      () => _removeSite(index),
+      place: SiteActionPlace.details,
+      danger: true,
+    ));
+    return actions;
+  }
+
+  /// The only dropdown on a project row: open its environments or local tools.
+  Widget _siteOpenInMenu(int index) {
+    final info = siteInfos[index];
 
     return PopupMenuButton<Future<void> Function()>(
-      tooltip: 'Edit, remove or open the site',
-      icon: const Icon(Icons.more_vert),
-      onSelected: (open) async {
-        try {
-          await open();
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not open it: $e')),
-          );
-        }
-      },
+      tooltip: 'Open in…',
+      icon: const Icon(Icons.open_in_new),
+      onSelected: (open) => _runOpenAction(context, open),
       itemBuilder: (context) => [
-        item(Icons.edit_outlined, 'Edit…', () => _editSite(index)),
-        item(Icons.delete_outline, 'Remove', () => _removeSite(index)),
-        const PopupMenuDivider(),
-        item(Icons.public, 'Open in browser', () => _launchUrl(siteInfo.url)),
-        if (siteInfo.devUrl != null)
-          item(Icons.science_outlined, 'Open dev site',
-              () => _launchUrl(siteInfo.devUrl!)),
-        if (kmyserverSites[siteInfo] case final server?) ...[
-          const PopupMenuDivider(),
-          item(Icons.history, 'Roll back…', () => _rollback(siteInfo, server)),
-        ],
-        if (repoPath != null && services.openInTargets.isNotEmpty) ...[
+        _menuItem(Icons.public, 'Open in browser', () => _launchUrl(info.url)),
+        for (final target in info.targets)
+          _menuItem(Icons.public, 'Open ${target.name} (${target.domain})',
+              () => _launchUrl(target.url)),
+        if (info.devUrl != null)
+          _menuItem(Icons.science_outlined, 'Open dev site',
+              () => _launchUrl(info.devUrl!)),
+        if (info.repoPath != null && services.openInTargets.isNotEmpty) ...[
           const PopupMenuDivider(),
           for (final (target, executable) in services.openInTargets)
-            item(target.icon, target.label,
-                () => target.open(executable, repoPath)),
+            _menuItem(target.icon, target.label,
+                () => target.open(executable, info.repoPath!)),
         ],
       ],
     );
   }
+
+  /// Buttons for a site that exists only on [server]. Nothing about it is written
+  /// to the project settings.
+  List<SiteRowAction> _serverSiteActions(Server server, SiteHealth health) => [
+        SiteRowAction(
+          Icons.list_alt,
+          'Releases…',
+          () => _runServerAction(ServerAction.releases, server, health),
+        ),
+        SiteRowAction(
+          Icons.history,
+          'Roll back…',
+          () => _runServerAction(ServerAction.rollback, server, health),
+        ),
+        for (final log in ServerAction.logActions)
+          SiteRowAction(
+            _serverActionIcon(log),
+            '${log.label}…',
+            () => _runServerAction(log, server, health),
+            place: SiteActionPlace.details,
+          ),
+        SiteRowAction(
+          Icons.delete_outline,
+          'Remove site…',
+          () => _runServerAction(ServerAction.remove, server, health),
+          place: SiteActionPlace.details,
+          danger: true,
+        ),
+      ];
+
+  /// The only dropdown on a temporary server row: open it in the browser.
+  Widget _serverOpenInMenu(Server server, SiteHealth health) =>
+      PopupMenuButton<Future<void> Function()>(
+        tooltip: 'Open in…',
+        icon: const Icon(Icons.open_in_new),
+        onSelected: (open) => _runOpenAction(context, open),
+        itemBuilder: (context) => [
+          _menuItem(Icons.public, 'Open in browser',
+              () => _launchUrl(server.siteUrl(health.domain))),
+        ],
+      );
 
   void _showChanges(SiteInfo siteInfo) {
     Navigator.of(context).push(MaterialPageRoute(
@@ -464,7 +791,10 @@ class _MyHomePageState extends State<MyHomePage> {
     );
 
     // The deploy remote has the commits now.
-    if (pushed && mounted) loadInfos();
+    if (pushed && mounted) {
+      loadInfos();
+      _reloadHealth();
+    }
   }
 
   Future<void> _rollback(SiteInfo siteInfo, KMyServerSite server) async {
@@ -476,38 +806,26 @@ class _MyHomePageState extends State<MyHomePage> {
     );
 
     // The site reports the rollback as its newest deploy.
-    if (rolledBack && mounted) loadInfos();
+    if (rolledBack && mounted) {
+      loadInfos();
+      _reloadHealth();
+    }
   }
 
   /// The active server: where all sites deploy, or each site's own remote.
   Widget _serverMenu() {
     const manage = '\u0000manage';
-    const status = '\u0000status';
 
     return PopupMenuButton<String>(
       tooltip: 'Switch the server the sites deploy to',
       onSelected: (value) {
         if (value == manage) {
           _manageServers();
-        } else if (value == status) {
-          _showServerStatus();
         } else {
           _switchServer(value);
         }
       },
       itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: status,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.monitor_heart_outlined, size: 20),
-              SizedBox(width: 12),
-              Text('Server status…'),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
         CheckedPopupMenuItem(
           value: '',
           checked: activeServer.isEmpty,
@@ -554,9 +872,9 @@ class _MyHomePageState extends State<MyHomePage> {
           Icon(Icons.travel_explore,
               size: 64, color: theme.colorScheme.primary),
           const SizedBox(height: 16),
-          Text('No sites yet', style: theme.textTheme.titleLarge),
+          Text('No projects yet', style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
-          const Text('Add your Symfony sites to see their versions.'),
+          const Text('Add your Symfony projects to see their versions.'),
           const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: _addSite,
@@ -573,6 +891,107 @@ class _MyHomePageState extends State<MyHomePage> {
     if (!await launchUrl(url)) {
       throw Exception('Could not launch $uri');
     }
+  }
+
+  /// Server sites without a matching project environment. They are temporary list
+  /// entries, not settings, and keep the server they came from.
+  List<({Server server, SiteHealth health})> get _serverOnlySites {
+    final result = <({Server server, SiteHealth health})>[];
+    for (final server in _kmyServers) {
+      for (final health in _siteHealth[server.name] ?? const <SiteHealth>[]) {
+        if (!siteInfos.any((info) => _matchesOn(server, info, health))) {
+          result.add((server: server, health: health));
+        }
+      }
+    }
+    return result;
+  }
+
+  Widget _statusPane(Server server) => ServerStatusPanel(
+        server: server,
+        report: _health[server.name]!,
+        onReload: _reloadHealth,
+        run: services.run,
+        onNewSite: _newSite,
+      );
+
+  Widget _siteList(BuildContext context) {
+    final extra = _serverOnlySites;
+    if (siteInfos.isEmpty && extra.isEmpty) return _emptyState(context);
+
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      // The handle on the left moves a project; the rest of the card stays clickable.
+      buildDefaultDragHandles: false,
+      itemCount: siteInfos.length + extra.length,
+      onReorderItem: (from, to) {
+        // The temporary server entries stay at the end of the list.
+        if (from >= siteInfos.length) return;
+        _moveSite(from, to.clamp(0, siteInfos.length - 1).toInt());
+      },
+      itemBuilder: (context, index) {
+        if (index >= siteInfos.length) {
+          final entry = extra[index - siteInfos.length];
+          return ServerSiteCard(
+            key: ValueKey('server-${entry.server.name}-${entry.health.domain}'),
+            health: entry.health,
+            serverName: entry.server.name,
+            actions: _serverSiteActions(entry.server, entry.health),
+            openInMenu: _serverOpenInMenu(entry.server, entry.health),
+          );
+        }
+
+        final siteInfo = siteInfos[index];
+        return SiteCard(
+          // Stays with the site when it moves.
+          key: ObjectKey(siteInfo),
+          site: siteInfo,
+          dragHandle: ReorderableDragStartListener(
+            index: index,
+            child: const MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Tooltip(
+                message: 'Drag to move the site',
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.drag_indicator, size: 20),
+                ),
+              ),
+            ),
+          ),
+          actions: _siteActions(index),
+          openInMenu: _siteOpenInMenu(index),
+          onTap:
+              siteInfo.repoPath == null ? null : () => _showChanges(siteInfo),
+          onDeploy: siteInfo.repoPath == null
+              ? null
+              : (status) => _deploy(siteInfo, status),
+          serverHealths: _cardHealths(siteInfo),
+        );
+      },
+    );
+  }
+
+  /// The status of the selected KMyServer is always beside the sites. The Linux window
+  /// has a minimum width (linux/runner/my_application.cc) so both panes fit.
+  Widget _body(BuildContext context) {
+    if (!loaded) return const Center(child: CircularProgressIndicator());
+    final server = _active;
+    if (server == null || !server.isKMyServer || _health[server.name] == null) {
+      return _siteList(context);
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 400,
+          child: SingleChildScrollView(child: _statusPane(server)),
+        ),
+        const VerticalDivider(width: 1),
+        Expanded(child: _siteList(context)),
+      ],
+    );
   }
 
   @override
@@ -606,46 +1025,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ],
       ),
-      body: !loaded
-          ? const Center(child: CircularProgressIndicator())
-          : siteInfos.isEmpty
-              ? _emptyState(ctx)
-              : ReorderableListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  // The handle on the left moves a site; the rest of the card stays clickable.
-                  buildDefaultDragHandles: false,
-                  itemCount: siteInfos.length,
-                  onReorderItem: _moveSite,
-                  itemBuilder: (context, index) {
-                    final siteInfo = siteInfos[index];
-
-                    return SiteCard(
-                      // Stays with the site when it moves.
-                      key: ObjectKey(siteInfo),
-                      site: siteInfo,
-                      dragHandle: ReorderableDragStartListener(
-                        index: index,
-                        child: const MouseRegion(
-                          cursor: SystemMouseCursors.grab,
-                          child: Tooltip(
-                            message: 'Drag to move the site',
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4),
-                              child: Icon(Icons.drag_indicator, size: 20),
-                            ),
-                          ),
-                        ),
-                      ),
-                      menu: _siteMenu(index),
-                      onTap: siteInfo.repoPath == null
-                          ? null
-                          : () => _showChanges(siteInfo),
-                      onDeploy: siteInfo.repoPath == null
-                          ? null
-                          : (status) => _deploy(siteInfo, status),
-                    );
-                  },
-                ),
+      body: _body(ctx),
     );
   }
 }

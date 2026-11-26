@@ -70,7 +70,8 @@ class _ServersDialogState extends State<_ServersDialog> {
                 title: Text(server.name),
                 subtitle: Text(
                   'remote ${server.remote}'
-                  '${server.isKMyServer ? ' · KMyServer ${server.sshHost}${server.sshPort == null ? '' : ':${server.sshPort}'}' : ''}',
+                  '${server.isKMyServer ? ' · KMyServer ${server.sshHost}${server.sshPort == null ? '' : ':${server.sshPort}'}' : ''}'
+                  '${server.domainSuffix.isEmpty ? '' : ' · *.${server.domainSuffix}'}',
                   style: monoTextStyle.copyWith(fontSize: 12),
                 ),
                 trailing: Row(
@@ -137,10 +138,12 @@ class _ServerFormState extends State<_ServerForm> {
       TextEditingController(text: widget.server?.sshPort?.toString() ?? '');
   late final sitePort =
       TextEditingController(text: widget.server?.sitePort?.toString() ?? '');
+  late final domainSuffix =
+      TextEditingController(text: widget.server?.domainSuffix ?? '');
 
   @override
   void dispose() {
-    for (final c in [name, remote, host, port, sitePort]) {
+    for (final c in [name, remote, host, port, sitePort, domainSuffix]) {
       c.dispose();
     }
     super.dispose();
@@ -154,12 +157,14 @@ class _ServerFormState extends State<_ServerForm> {
       sshHost: host.text.trim(),
       sshPort: int.tryParse(port.text.trim()),
       sitePort: int.tryParse(sitePort.text.trim()),
+      domainSuffix: domainSuffix.text.trim(),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: Text(widget.server == null ? 'Add server' : 'Edit server'),
       content: SizedBox(
         width: 440,
@@ -219,6 +224,15 @@ class _ServerFormState extends State<_ServerForm> {
                     hintText: '443',
                     helperText: 'e.g. 8443 for the local test VM'),
                 validator: _portError,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: domainSuffix,
+                decoration: const InputDecoration(
+                  labelText: 'Default domain suffix',
+                  hintText: 'localhost or kmy.example.com',
+                  helperText: 'New sites get <site name>.<suffix>',
+                ),
               ),
             ],
           ),

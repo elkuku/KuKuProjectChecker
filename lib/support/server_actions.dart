@@ -33,7 +33,8 @@ class ServerAction {
   static const backup = ServerAction(
     id: 'backup',
     label: 'Run backup',
-    description: 'Writes a new backup set of the databases, secrets and shared site files.',
+    description:
+        'Writes a new backup set of the databases, secrets and shared site files.',
     confirmation: 'Run a backup now?',
     target: ServerActionTarget.host,
     risk: ServerActionRisk.write,
@@ -43,7 +44,8 @@ class ServerAction {
   static const mailTest = ServerAction(
     id: 'mailTest',
     label: 'Test mail',
-    description: 'Sends one test mail with the server’s configured send-only account.',
+    description:
+        'Sends one test mail with the server’s configured send-only account.',
     confirmation: 'Send a test mail?',
     target: ServerActionTarget.host,
     risk: ServerActionRisk.write,
@@ -63,7 +65,8 @@ class ServerAction {
   static const rollback = ServerAction(
     id: 'rollback',
     label: 'Roll back',
-    description: 'Switches the site back to its previous release. The database is not rolled back.',
+    description:
+        'Switches the site back to its previous release. The database is not rolled back.',
     confirmation: 'Roll this site back to its previous release?',
     target: ServerActionTarget.site,
     risk: ServerActionRisk.write,
@@ -73,7 +76,8 @@ class ServerAction {
   static const logDeploy = ServerAction(
     id: 'logDeploy',
     label: 'Deploy log',
-    description: 'Reads the last 200 lines of this site’s build and switch log.',
+    description:
+        'Reads the last 200 lines of this site’s build and switch log.',
     confirmation: 'Show the deploy log?',
     target: ServerActionTarget.host,
     risk: ServerActionRisk.read,
@@ -83,7 +87,8 @@ class ServerAction {
   static const logApp = ServerAction(
     id: 'logApp',
     label: 'App log',
-    description: 'Reads the last 200 lines of the Symfony log (or PHP error log).',
+    description:
+        'Reads the last 200 lines of the Symfony log (or PHP error log).',
     confirmation: 'Show the app log?',
     target: ServerActionTarget.host,
     risk: ServerActionRisk.read,
@@ -93,7 +98,8 @@ class ServerAction {
   static const logPhp = ServerAction(
     id: 'logPhp',
     label: 'PHP log',
-    description: 'Reads the last 200 lines of this site’s PHP-FPM pool messages.',
+    description:
+        'Reads the last 200 lines of this site’s PHP-FPM pool messages.',
     confirmation: 'Show the PHP log?',
     target: ServerActionTarget.host,
     risk: ServerActionRisk.read,
@@ -113,7 +119,8 @@ class ServerAction {
   static const remove = ServerAction(
     id: 'remove',
     label: 'Remove site',
-    description: 'Deletes the site after a final backup. Its database is kept unless you ask to drop it.',
+    description:
+        'Deletes the site after a final backup. Its database is kept unless you ask to drop it.',
     confirmation: 'Remove this site?',
     target: ServerActionTarget.host,
     risk: ServerActionRisk.destructive,
@@ -157,10 +164,14 @@ class ServerAction {
       throw ArgumentError.value(site, 'site', 'Not a KMyServer site name');
     }
     if (dropDb && !(dryRun && confirmed)) {
-      throw ArgumentError.value(dropDb, 'dropDb', 'Only after a confirmed dry run');
+      throw ArgumentError.value(
+          dropDb, 'dropDb', 'Only after a confirmed dry run');
     }
 
-    final args = [for (final part in argv) if (part == '{site}') site else part];
+    final args = [
+      for (final part in argv)
+        if (part == '{site}') site else part
+    ];
     // The bare site-remove call is the dry run; --yes is added only on confirmation.
     if (dryRun && confirmed) args.add('--yes');
     if (dropDb) args.add('--drop-db');

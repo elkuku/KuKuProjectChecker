@@ -9,6 +9,8 @@ import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
+import 'helpers.dart';
+
 class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
@@ -100,8 +102,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Edit, remove or open the site'));
-      await tester.pumpAndSettle();
+      await expandRow(tester, 'Shop');
 
       return calls;
     }
@@ -110,7 +111,7 @@ void main() {
       final calls = await showSite(
           tester, 'shop@new.example.com:/srv/sites/shop/repo.git');
 
-      await tester.tap(find.text('Roll back…'));
+      await tester.tap(find.byTooltip('Roll back…'));
       await tester.pumpAndSettle();
       expect(find.text('Roll back Shop?'), findsOneWidget);
       expect(find.textContaining('Only the code goes back'), findsOneWidget);
@@ -127,7 +128,7 @@ void main() {
     testWidgets('shows when there is nothing to go back to', (tester) async {
       await showSite(tester, 'shop@h:/srv/sites/shop/repo.git', exitCode: 1);
 
-      await tester.tap(find.text('Roll back…'));
+      await tester.tap(find.byTooltip('Roll back…'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Roll back'));
       await tester.pumpAndSettle();
@@ -138,6 +139,7 @@ void main() {
     testWidgets('is not offered for other servers', (tester) async {
       await showSite(tester, 'shop_x1@shop.example.com:~/git/shop.git');
 
+      await openOpenInMenu(tester, 'Shop');
       expect(find.text('Open in browser'), findsOneWidget);
       expect(find.text('Roll back…'), findsNothing);
     });

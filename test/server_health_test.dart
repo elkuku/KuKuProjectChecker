@@ -62,7 +62,10 @@ Map<String, dynamic> _report({bool healthy = false}) => {
           'name': 'starter',
           'domain': 'starter.localhost',
           'http': healthy ? 200 : 0,
-          'certificate': {'days': healthy ? 0 : null, 'issuer': 'Caddy Local Authority'},
+          'certificate': {
+            'days': healthy ? 0 : null,
+            'issuer': 'Caddy Local Authority'
+          },
           'release': '20261125-1412',
           'revision': '33abb4d',
           'deploy': {
@@ -125,12 +128,10 @@ void main() {
 
   group('ServerApi', () {
     const vm = Server(
-        name: 'Test VM',
-        remote: 'vm',
-        sshHost: 'localhost',
-        sshPort: 2222);
+        name: 'Test VM', remote: 'vm', sshHost: 'localhost', sshPort: 2222);
 
-    test('runs the installed script as root with the server\'s SSH port', () async {
+    test('runs the installed script as root with the server\'s SSH port',
+        () async {
       final calls = <String>[];
       final api = ServerApi(
         run: (executable, arguments, onOutput, {workingDirectory}) async {
@@ -144,9 +145,8 @@ void main() {
 
       final health = await api.health(vm);
 
-      expect(calls, [
-        'ssh -p 2222 root@localhost /usr/local/sbin/server-health --json'
-      ]);
+      expect(calls,
+          ['ssh -p 2222 root@localhost /usr/local/sbin/server-health --json']);
       expect(health.host, 'test-vm');
       expect(health.warnings, isEmpty);
     });

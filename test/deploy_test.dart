@@ -261,14 +261,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('show the changes and the commits to deploy', (tester) async {
+    testWidgets('show compact change and deploy buttons', (tester) async {
       await showSite(tester, _pending);
 
-      expect(
-          find.widgetWithText(OutlinedButton, 'Changes (3)'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Deploy (2)'), findsOneWidget);
+      expect(find.byTooltip('Show the 3 uncommitted files'), findsOneWidget);
+      final deploy = find.byTooltip('Deploy 2 commits to production');
+      expect(deploy, findsOneWidget);
 
-      await tester.tap(find.text('Deploy (2)'));
+      await tester.tap(deploy);
       await tester.pumpAndSettle();
       expect(find.text('Deploy Shop?'), findsOneWidget);
     });
@@ -301,28 +301,23 @@ void main() {
               deployRemote: 'production',
               undeployed: 0));
 
-      expect(find.textContaining('Deploy ('), findsNothing);
-      expect(
-          tester
-              .widget<OutlinedButton>(
-                  find.widgetWithText(OutlinedButton, 'Changes'))
-              .onPressed,
-          isNull);
-      expect(
-          tester
-              .widget<ButtonStyleButton>(find.ancestor(
-                  of: find.text('Deploy'),
-                  matching:
-                      find.byWidgetPredicate((w) => w is ButtonStyleButton)))
-              .onPressed,
-          isNull);
+      final changes = find.byTooltip('No uncommitted files');
+      final deploy = find.byTooltip('Nothing to deploy');
+      expect(changes, findsOneWidget);
+      expect(deploy, findsOneWidget);
+      ButtonStyleButton button(Finder finder) =>
+          tester.widget<ButtonStyleButton>(find.descendant(
+              of: finder,
+              matching: find.byWidgetPredicate((w) => w is ButtonStyleButton)));
+      expect(button(changes).onPressed, isNull);
+      expect(button(deploy).onPressed, isNull);
 
-      // The menu edits, removes or opens the site; it doesn't deploy.
-      await tester.tap(find.byTooltip('Edit, remove or open the site'));
+      // Only Open in… is left in the dropdown; actions are buttons.
+      await tester.tap(find.byTooltip('Open in…'));
       await tester.pumpAndSettle();
       expect(find.text('Open in browser'), findsOneWidget);
-      expect(find.text('Deploy'), findsOneWidget);
-      expect(find.text('Changes'), findsOneWidget);
+      expect(find.text('Deploy'), findsNothing);
+      expect(find.text('Changes'), findsNothing);
     });
   });
 }

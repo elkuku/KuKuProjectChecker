@@ -4,16 +4,19 @@ import 'package:kuku_project_checker/support/server_actions.dart';
 
 void main() {
   const vm = Server(
-      name: 'Test VM',
-      remote: 'vm',
-      sshHost: 'localhost',
-      sshPort: 2222);
+      name: 'Test VM', remote: 'vm', sshHost: 'localhost', sshPort: 2222);
 
   group('ServerAction', () {
     test('host actions run as root with fixed argv', () {
       expect(
         ServerAction.backup.sshArgs(vm, ''),
-        ['-p', '2222', 'root@localhost', '/usr/local/sbin/server-backup', 'run'],
+        [
+          '-p',
+          '2222',
+          'root@localhost',
+          '/usr/local/sbin/server-backup',
+          'run'
+        ],
       );
       expect(
         ServerAction.mailTest.sshArgs(vm, ''),
@@ -67,18 +70,12 @@ void main() {
     });
 
     test('site-remove is a dry run before --yes', () {
-      expect(ServerAction.remove.command('starter'), [
-        '/usr/local/sbin/site-remove',
-        'starter'
-      ]);
-      expect(ServerAction.remove.command('starter', confirmed: true), [
-        '/usr/local/sbin/site-remove',
-        'starter',
-        '--yes'
-      ]);
+      expect(ServerAction.remove.command('starter'),
+          ['/usr/local/sbin/site-remove', 'starter']);
+      expect(ServerAction.remove.command('starter', confirmed: true),
+          ['/usr/local/sbin/site-remove', 'starter', '--yes']);
       expect(
-        ServerAction.remove.command('starter',
-            confirmed: true, dropDb: true),
+        ServerAction.remove.command('starter', confirmed: true, dropDb: true),
         ['/usr/local/sbin/site-remove', 'starter', '--yes', '--drop-db'],
       );
       expect(
@@ -97,8 +94,8 @@ void main() {
       }
       expect(() => ServerAction.logApp.command('../etc'), throwsArgumentError);
       expect(
-        () => ServerAction.backup.sshArgs(
-            const Server(name: 'Plesk', remote: 'elkuku.dev'), ''),
+        () => ServerAction.backup
+            .sshArgs(const Server(name: 'Plesk', remote: 'elkuku.dev'), ''),
         throwsArgumentError,
       );
     });
@@ -106,7 +103,8 @@ void main() {
     test('the allowlist is explicit', () {
       expect(ServerAction.all.length, 9);
       expect(ServerAction.all, contains(ServerAction.remove));
-      expect(ServerAction.serverActions, [ServerAction.backup, ServerAction.mailTest]);
+      expect(ServerAction.serverActions,
+          [ServerAction.backup, ServerAction.mailTest]);
       expect(ServerAction.logActions.length, 4);
     });
   });

@@ -92,7 +92,9 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
           if (!mounted) return;
           setState(() => output.add(line));
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
+            if (scroll.hasClients) {
+              scroll.jumpTo(scroll.position.maxScrollExtent);
+            }
           });
         },
       );
@@ -106,9 +108,7 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
       exitCode = code;
       output.add('== exit $code');
       stage = code == 0
-          ? (widget.action.dryRun && !confirmed
-              ? _Stage.dryRun
-              : _Stage.done)
+          ? (widget.action.dryRun && !confirmed ? _Stage.dryRun : _Stage.done)
           : _Stage.failed;
     });
   }
@@ -133,9 +133,8 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
         _ => null,
       },
       title: Text(switch (stage) {
-        _Stage.confirm => action.dryRun
-            ? 'Dry run: ${widget.siteName}?'
-            : action.confirmation,
+        _Stage.confirm =>
+          action.dryRun ? 'Dry run: ${widget.siteName}?' : action.confirmation,
         _Stage.dryRun => 'Remove ${widget.siteName}?',
         _Stage.running => '${action.label} …',
         _Stage.done => '${action.label} finished',
@@ -150,7 +149,8 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
             if (stage == _Stage.confirm) ...[
               Text(action.description),
               const SizedBox(height: 10),
-              Text('ssh ${action.sshArgs(widget.server, widget.siteName).join(' ')}',
+              Text(
+                  'ssh ${action.sshArgs(widget.server, widget.siteName).join(' ')}',
                   style: monoTextStyle.copyWith(
                       fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
               if (warning)
@@ -200,7 +200,8 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: () => setState(() => showRaw = !showRaw),
-                    icon: Icon(showRaw ? Icons.summarize : Icons.terminal, size: 18),
+                    icon: Icon(showRaw ? Icons.summarize : Icons.terminal,
+                        size: 18),
                     label: Text(showRaw ? 'Summary' : 'Show full output'),
                   ),
                 ),
@@ -227,7 +228,8 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
                     value: dropConfirmed,
                     onChanged: (value) =>
                         setState(() => dropConfirmed = value ?? false),
-                    title: const Text('Confirm: the database cannot be restored'),
+                    title:
+                        const Text('Confirm: the database cannot be restored'),
                     subtitle: const Text(
                         'The final backup stays on the server for 14 days.'),
                     controlAffinity: ListTileControlAffinity.leading,
@@ -255,9 +257,10 @@ class _ServerActionDialogState extends State<ServerActionDialog> {
               child: const Text('Cancel'),
             ),
             FilledButton.icon(
-              onPressed: typed.text == widget.siteName && (!dropDb || dropConfirmed)
-                  ? () => _run(confirmed: true, clear: true)
-                  : null,
+              onPressed:
+                  typed.text == widget.siteName && (!dropDb || dropConfirmed)
+                      ? () => _run(confirmed: true, clear: true)
+                      : null,
               icon: const Icon(Icons.delete_outline),
               label: Text(dropDb ? 'Remove and drop DB' : 'Remove site'),
             ),

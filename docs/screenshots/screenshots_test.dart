@@ -35,6 +35,8 @@ const sites = [
       name: 'Shop (local)',
       url: 'https://127.0.0.1:8000',
       repoPath: '~/repos/shop-dev'),
+  // Matches the site in sampleHealth, so the server-side badges show in the screenshot.
+  Site(name: 'Starter', url: 'https://starter.localhost:8443'),
 ];
 
 final versions = {
@@ -44,6 +46,8 @@ final versions = {
       const SystemInfo(sfVersion: '7.4.23', phpVersion: '8.4.15'),
   'https://docs.example.com':
       const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
+  'https://starter.localhost:8443':
+      const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
   // The dev site deployed itself 12 minutes ago, after the newest commit on GitHub.
   'https://dev.shop.example.com': SystemInfo(
       sfVersion: '8.1.11',
@@ -83,7 +87,7 @@ final sampleHealth = ServerHealth.fromJson({
   'schema': 1,
   'generatedAt': '2026-11-26T09:00:00Z',
   'host': 'test-vm',
-  'problems': 1,
+  'problems': 3,
   'system': {
     'os': 'Debian 13.8, kernel 6.12.57+deb13-amd64',
     'kernel': '6.12.57+deb13-amd64',
@@ -138,6 +142,19 @@ final sampleHealth = ServerHealth.fromJson({
       'critical24h': 0,
       'lastCritical': null,
       'problems': [],
+    },
+    // No project in the list matches this one: it is a temporary entry.
+    {
+      'name': 'pgtest',
+      'domain': 'pgtest.localhost',
+      'http': 0,
+      'certificate': {'days': 0, 'issuer': 'Caddy Local Authority'},
+      'release': '20261124-0915',
+      'revision': 'a1b2c3d',
+      'deploy': {'state': 'failed', 'when': '2026-11-24 09:15'},
+      'critical24h': 1,
+      'lastCritical': 'Database connection failed',
+      'problems': ['http 000', 'last deploy failed'],
     },
   ],
 });
@@ -281,9 +298,10 @@ void main() {
     await loadFont('Noto Sans Mono', [mono]);
   });
 
-  Future<void> showApp(WidgetTester tester, ThemeMode mode) async {
-    // The app's default window: 1000 wide.
-    tester.view.physicalSize = const Size(2000, 1400);
+  Future<void> showApp(WidgetTester tester, ThemeMode mode,
+      {double height = 1600}) async {
+    // The app's default window: 1200 wide, above its 1100 px minimum.
+    tester.view.physicalSize = Size(2400, height);
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
 
@@ -313,15 +331,32 @@ void main() {
 
     group(mode.name, () {
       screenshotTest('site list', (tester) async {
-        await showApp(tester, mode);
+        // Taller so the temporary server-only site at the end is visible too.
+        await showApp(tester, mode, height: 3200);
         await snap('01_sites');
       });
 
       screenshotTest('open in menu', (tester) async {
         await showApp(tester, mode);
-        await tester.tap(find.byTooltip('Edit, remove or open the site').first);
+        await tester.tap(find.byTooltip('Open in…').first);
         await tester.pumpAndSettle();
         await snap('02_open_in_menu');
+      });
+
+      screenshotTest('expanded row', (tester) async {
+        await showApp(tester, mode, height: 2200);
+        // The first row (Shop) collapsed; then its on-demand details.
+        await snap('09_compact_rows');
+        await tester.tap(find.byTooltip('Show details').first);
+        await tester.pumpAndSettle();
+        await snap('10_expanded_row');
+      });
+
+      screenshotTest('environments', (tester) async {
+        await showApp(tester, mode);
+        await tester.tap(find.byTooltip('Environments…').first);
+        await tester.pumpAndSettle();
+        await snap('11_environments');
       });
 
       screenshotTest('changes', (tester) async {
@@ -341,29 +376,26 @@ void main() {
         await tester.pumpAndSettle();
         await snap('06_deploy_confirm');
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+        await tester.tap(find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(FilledButton, 'Deploy'),
+        ));
         await tester.pumpAndSettle();
         await snap('07_deploy_done');
       });
 
       screenshotTest('edit site', (tester) async {
         await showApp(tester, mode);
-        await tester.tap(find.byTooltip('Edit, remove or open the site').first);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Edit…'));
+        await tester.tap(find.byTooltip('Edit…').first);
         await tester.pumpAndSettle();
         await snap('05_edit_site');
       });
 
       screenshotTest('server status', (tester) async {
         await showApp(tester, mode);
-        tester.view.physicalSize = const Size(2000, 2200);
+        tester.view.physicalSize = const Size(2400, 2600);
         await tester.pumpAndSettle();
-        await tester.tap(
-            find.byTooltip('Switch the server the sites deploy to'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Server status…'));
-        await tester.pumpAndSettle();
+        // The selected server's status is now a panel on the main screen.
         await snap('08_server_status');
       });
     });

@@ -17,12 +17,18 @@ class Server {
   /// The HTTPS port the sites answer on, if not 443 (e.g. 8443 for the local test VM).
   final int? sitePort;
 
+  /// Default suffix for sites on this server, e.g. `localhost` or `kmy.example.com`.
+  /// A new site's domain is `<site name>.<domainSuffix>`; empty means the project's own
+  /// domain is used instead (local Symfony, Plesk).
+  final String domainSuffix;
+
   const Server({
     required this.name,
     required this.remote,
     this.sshHost = '',
     this.sshPort,
     this.sitePort,
+    this.domainSuffix = '',
   });
 
   /// New sites can be created on it from a template.
@@ -44,6 +50,10 @@ class Server {
       ? '$site@$sshHost:/srv/sites/$site/repo.git'
       : 'ssh://$site@$sshHost:$sshPort/srv/sites/$site/repo.git';
 
+  /// The default domain for a new site with [name] on this server.
+  String siteDomain(String name) =>
+      domainSuffix.isEmpty ? name : '$name.$domainSuffix';
+
   /// An error for a git remote name, or null if [text] can be one.
   static String? remoteError(String text) {
     text = text.trim();
@@ -64,6 +74,7 @@ class Server {
       sshHost: text('sshHost'),
       sshPort: json['sshPort'] is int ? json['sshPort'] : null,
       sitePort: json['sitePort'] is int ? json['sitePort'] : null,
+      domainSuffix: text('domainSuffix'),
     );
   }
 
@@ -73,6 +84,7 @@ class Server {
         if (sshHost.isNotEmpty) 'sshHost': sshHost,
         if (sshPort != null) 'sshPort': sshPort,
         if (sitePort != null) 'sitePort': sitePort,
+        if (domainSuffix.isNotEmpty) 'domainSuffix': domainSuffix,
       };
 
   @override
@@ -82,8 +94,10 @@ class Server {
       other.remote == remote &&
       other.sshHost == sshHost &&
       other.sshPort == sshPort &&
-      other.sitePort == sitePort;
+      other.sitePort == sitePort &&
+      other.domainSuffix == domainSuffix;
 
   @override
-  int get hashCode => Object.hash(name, remote, sshHost, sshPort, sitePort);
+  int get hashCode =>
+      Object.hash(name, remote, sshHost, sshPort, sitePort, domainSuffix);
 }

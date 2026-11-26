@@ -12,32 +12,53 @@ server. Manage them with the server switch in the app bar → **Servers…**:
   (e.g. `new.example.com`, or `localhost` and `2222` for the local test VM).
 - **HTTPS port of the sites** — if not 443, e.g. `8443` for the local test VM; new sites get
   `https://<domain>:<port>` as their address.
+- **Domain suffix** — e.g. `localhost` or `kmy.example.com`: a new site on this server is suggested
+  as `<site name>.<domainSuffix>`. Leave it empty for servers where sites use their own domain
+  (local Symfony, Plesk).
 
 The servers are saved in `preferences.json`, next to the theme.
 
 ## Switching the server
 
-The switch in the app bar says where the sites deploy:
+The switch in the app bar picks the server whose status is shown beside the projects:
 
-- **Each site's own deploy remote** — the default: every site uses the remote chosen in its
-  **Edit…** dialog (or the automatic choice), see [Deploying](./deploy).
-- **A server** — every site deploys to that server's remote, e.g. all to the new server while
-  moving off Plesk, or all to the test VM. A site without that remote can't deploy (its 🚀 button
-  is greyed out); add the remote to its repository. Sites set to **No deploys** stay that way.
+- **Own remotes** — no server status pane; every project uses its own deploy remote.
+- **A KMyServer** — its health report appears beside the project list, and its sites are matched
+  to the projects. The active server's **Releases** and **Roll back** buttons stay in the compact
+  project rows.
 
-**Roll back…** follows the switch: it is offered when the active deploy remote is a KMyServer
-site repository.
+A project's deploy remote comes from its [environments](./settings#environments): the target for
+the active server wins, otherwise the first target is used. A project still using the older single
+site form keeps the previous behaviour: the active server's remote is used for it. A target with
+**`-`** as remote never deploys. The 🚀 button is greyed out when nothing can be deployed; add the
+remote to the repository if needed.
+
+**Roll back** is offered on a row when a KMyServer reports about one of its environments.
 
 ## Server status and actions
 
-The same server switch opens **Server status…**: a health report plus the actions the server
-scripts already support. The page never runs a free-form command — every button sends a fixed
-argument list over SSH, shows the command, streams the output and shows the exit code. A non-zero
-exit is always visible.
+When a KMyServer server is selected, its health report always appears beside the project list; the
+Linux window has a minimum width so both panes fit. The report feeds the project cards, not a
+second site list in the status pane:
+
+- A project that is on a server gets **HTTP**, **deploy** and **CRITICAL** badges for each matching
+  environment (matched by server and address or site name). Its row has **Releases** and
+  **Roll back** buttons; the expanded details add the four logs and **Remove site**.
+- A server site without a local project appears at the end of the list as a temporary row, marked
+  *not in the projects* when expanded. Nothing is saved for it; it disappears when another server
+  is selected or the site is removed. Its buttons offer the same server actions.
+- A project that is not on a server gets a **Deploy to `<server>`…** button in its expanded details.
+  It asks which site name, domain and git template to use (prefilled from the project, that
+  server's domain suffix and its remotes), runs `site-add` as root, adds the server remote locally
+  and then uses the usual Deploy dialog to push the branch. The chosen domain/name is saved back
+  into the project's environment.
+
+The status pane itself keeps only host-level information and actions. It never runs a free-form
+command — every button sends a fixed argument list over SSH, shows the command, streams the output
+and shows the exit code. A non-zero exit is always visible.
 
 - **Server:** refresh the report, run a backup, send a test mail, or open the **New site…** wizard.
-- **Each site:** deploy (the same git-push dialog as the site card), roll back, list releases,
-  view the deploy / app / PHP / Caddy log, or remove the site.
+- **Each site:** the actions above, from the site's card in the project list.
 
 **Remove site** first shows a dry run that changes nothing. To go on you must type the site name;
 dropping the database also needs a second confirmation. The final backup is made by the server

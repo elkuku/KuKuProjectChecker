@@ -12,6 +12,8 @@ import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
+import 'helpers.dart';
+
 class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
@@ -254,6 +256,7 @@ services:
             dbPlatform: 'mariadb',
             dbVersion: '12.3'),
       );
+      await expandRow(tester, 'Shop');
 
       expect(find.text('PHP 8.5.12'), findsOneWidget);
       expect(find.text('Symfony 8.1.11'), findsOneWidget);
@@ -284,6 +287,7 @@ services:
             dbPlatform: 'postgresql',
             dbVersion: '16'),
       );
+      await expandRow(tester, 'Shop');
 
       // Symfony and the database differ; PHP only in the patch version.
       expect(find.byIcon(Icons.compare_arrows), findsNWidgets(2));
@@ -294,7 +298,8 @@ services:
       expect(tooltipOf(tester, 'unknown'), 'Last deploy: finished with errors');
     });
 
-    testWidgets('are compact in a wide window', (tester) async {
+    testWidgets('show full labels in the expanded details of a wide window',
+        (tester) async {
       await showSite(
         tester,
         SystemInfo(
@@ -309,21 +314,24 @@ services:
         const LocalVersions(symfony: '8.1.11', php: '8.5.13'),
         width: 1300,
       );
+      // The collapsed row is only a title and buttons.
+      expect(find.text('PHP 8.5.12'), findsNothing);
+      await expandRow(tester, 'Shop');
 
-      // Only the numbers; the icons and tooltips say what they are.
-      expect(find.text('8.5.12'), findsOneWidget);
-      expect(find.text('8.1.11'), findsOneWidget);
-      expect(find.text('12.3.4'), findsOneWidget);
-      expect(find.text('7m'), findsOneWidget);
-      expect(tooltipOf(tester, '8.1.11'),
+      expect(find.text('PHP 8.5.12'), findsOneWidget);
+      expect(find.text('Symfony 8.1.11'), findsOneWidget);
+      expect(find.text('MariaDB 12.3.4'), findsOneWidget);
+      expect(find.text('7m ago'), findsOneWidget);
+      expect(tooltipOf(tester, 'Symfony 8.1.11'),
           'Symfony 8.1.11 on the site\nSymfony 8.1.11 locally');
-      expect(tooltipOf(tester, '12.3.4'),
+      expect(tooltipOf(tester, 'MariaDB 12.3.4'),
           'MariaDB 12.3.4-MariaDB-deb12 on the site');
     });
 
     testWidgets('show only the versions for an older site', (tester) async {
       await showSite(tester,
           const SystemInfo(sfVersion: 'N/A', phpVersion: '8.5.12'), null);
+      await expandRow(tester, 'Shop');
 
       expect(find.text('Symfony N/A'), findsOneWidget);
       expect(find.byIcon(Icons.storage), findsNothing);

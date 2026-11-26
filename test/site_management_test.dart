@@ -12,6 +12,8 @@ import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 import 'package:kuku_project_checker/widgets/site_dialog.dart';
 
+import 'helpers.dart';
+
 /// Settings in memory: what the app saves can be checked.
 class _MemorySettings extends Settings {
   List<Site> sites;
@@ -91,13 +93,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> openMenu(WidgetTester tester, String site) async {
-    await tester.tap(find.descendant(
-        of: find.ancestor(of: find.text(site), matching: find.byType(Card)),
-        matching: find.byTooltip('Edit, remove or open the site')));
-    await tester.pumpAndSettle();
-  }
-
   TextField field(WidgetTester tester, String label) =>
       tester.widget<TextField>(find.widgetWithText(TextField, label));
 
@@ -105,9 +100,7 @@ void main() {
     await showApp(tester, [_shop]);
     expect(checkedWith, [Site.autoDeploy]);
 
-    await openMenu(tester, 'Shop');
-    await tester.tap(find.text('Edit…'));
-    await tester.pumpAndSettle();
+    await tapRowButton(tester, 'Shop', 'Edit…');
 
     // Automatic shows what it would pick; every remote is offered.
     expect(find.text('Automatic (production)'), findsOneWidget);
@@ -130,9 +123,7 @@ void main() {
     final home = Platform.environment['HOME']!;
     await showApp(tester, [_blog]);
 
-    await openMenu(tester, 'Blog');
-    await tester.tap(find.text('Edit…'));
-    await tester.pumpAndSettle();
+    await tapRowButton(tester, 'Blog', 'Edit…');
 
     // Cancelled: the field stays as it is.
     picked = null;
@@ -171,9 +162,7 @@ void main() {
   testWidgets('no deploy remote choice without a repository', (tester) async {
     await showApp(tester, [_blog]);
 
-    await openMenu(tester, 'Blog');
-    await tester.tap(find.text('Edit…'));
-    await tester.pumpAndSettle();
+    await tapRowButton(tester, 'Blog', 'Edit…');
 
     expect(find.text('Deploy remote'), findsNothing);
     await tester.enterText(
@@ -185,7 +174,7 @@ void main() {
   testWidgets('an empty list offers to add a site', (tester) async {
     await showApp(tester, []);
 
-    expect(find.text('No sites yet'), findsOneWidget);
+    expect(find.text('No projects yet'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Add site'));
     await tester.pumpAndSettle();
 
@@ -228,9 +217,7 @@ void main() {
     await showApp(tester, [_shop, _blog]);
     expect(fetched, hasLength(2));
 
-    await openMenu(tester, 'Blog');
-    await tester.tap(find.text('Edit…'));
-    await tester.pumpAndSettle();
+    await tapRowButton(tester, 'Blog', 'Edit…');
 
     expect(find.text('Edit site'), findsOneWidget);
     expect(field(tester, 'Name').controller!.text, 'Blog');
@@ -245,16 +232,15 @@ void main() {
     expect(settings.sites[1].name, 'News');
     expect(settings.sites[1].repoPath, '~/repos/news');
     expect(fetched, hasLength(3), reason: 'Only the edited site is read again');
-    // With a repository it now shows its status.
-    expect(find.textContaining('master'), findsNWidgets(2));
+    // The repository status is in the expanded details.
+    await expandRow(tester, 'News');
+    expect(find.textContaining('master'), findsOneWidget);
   });
 
   testWidgets('remove a site and bring it back', (tester) async {
     await showApp(tester, [_shop, _blog]);
 
-    await openMenu(tester, 'Shop');
-    await tester.tap(find.text('Remove'));
-    await tester.pumpAndSettle();
+    await tapRowButton(tester, 'Shop', 'Remove', expand: true);
 
     expect(find.text('Shop'), findsNothing);
     expect(settings.sites.map((s) => s.name), ['Blog']);
@@ -286,13 +272,21 @@ void main() {
         lessThan(tester.getTopLeft(find.text('Shop')).dy));
   });
 
-  testWidgets('the menu still opens the site', (tester) async {
+  testWidgets('buttons edit the site and the menu opens it', (tester) async {
     await showApp(tester, [_shop]);
 
-    await openMenu(tester, 'Shop');
-    expect(find.text('Edit…'), findsOneWidget);
-    expect(find.text('Remove'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: projectCard('Shop'), matching: find.byTooltip('Edit…')),
+        findsOneWidget);
+    expect(
+        find.descendant(
+            of: projectCard('Shop'), matching: find.byTooltip('Open in…')),
+        findsOneWidget);
+
+    await openOpenInMenu(tester, 'Shop');
     expect(find.text('Open in browser'), findsOneWidget);
+    expect(find.text('Remove'), findsNothing);
   });
 
   test('Site.urlError', () {
