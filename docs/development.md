@@ -17,10 +17,11 @@ so they need `git`.
 |---|---|
 | `lib/main.dart` | The app, the project list (including temporary server-only sites) and the theme. |
 | `lib/screens/` | The uncommitted changes and the diff, and the server status panel (beside the project list when a KMyServer is selected). |
-| `lib/widgets/` | The compact project rows, server-only site rows, their action buttons and **Open in…** dropdown, the environments/new-site/deploy dialogs and the repository status line. |
+| `lib/widgets/` | The compact project rows, server-only site rows, their action buttons and **Open in…** dropdown, the environments/deploy dialogs and the repository status line. `add_site_dialog.dart` is the one add-site wizard; it embeds the reusable environment editor from `environments_dialog.dart`. |
 | `lib/support/app_services.dart` | Everything the app reads from outside: settings, sites, repositories, installed apps, server health. Tests and the screenshots replace it with sample data. |
 | `lib/support/server.dart` | A server: its git remote, SSH host and port, and the domain suffix suggested for new sites; saved in preferences.json. |
 | `lib/support/site.dart` | A project and its named environments (`SiteTarget`: address, server, deploy remote). |
+| `lib/support/single_instance.dart` | Per-user startup lock (a Unix socket); a second launch exits instead of opening another window. |
 | `lib/support/server_api.dart` | Runs the installed `server-health --json` over SSH, with a fixed command. |
 | `lib/support/server_health.dart` | The typed v1 health report; flattens its warnings for the status page. |
 | `lib/support/site_creator.dart` | New site from a template: site-add over SSH, clone, GitHub repo. |

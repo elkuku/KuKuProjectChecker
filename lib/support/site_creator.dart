@@ -23,8 +23,11 @@ class NewSite {
   /// The folder the local clone goes into: [parentDir]/[name].
   final String parentDir;
 
-  /// Also create a private GitHub repository (gh) as origin and push to it.
+  /// Also create a GitHub repository (gh) as origin and push to it.
   final bool github;
+
+  /// Whether that repository is private; when false it is public.
+  final bool githubPrivate;
 
   const NewSite({
     required this.server,
@@ -34,6 +37,7 @@ class NewSite {
     required this.template,
     required this.parentDir,
     this.github = false,
+    this.githubPrivate = true,
   });
 
   String get dir => '${parentDir.replaceFirst(RegExp(r'/+$'), '')}/$name';
@@ -62,7 +66,7 @@ class NewSite {
 enum CreateStep { server, clone, github }
 
 /// Creates a site on a KMyServer server from a template, clones it and (optionally) makes
-/// a private GitHub repository for it.
+/// a GitHub repository (private by default) for it.
 class SiteCreator {
   final RunFunction run;
 
@@ -106,7 +110,7 @@ class SiteCreator {
             'repo',
             'create',
             site.name,
-            '--private',
+            site.githubPrivate ? '--private' : '--public',
             '--source',
             site.dir,
             '--remote',

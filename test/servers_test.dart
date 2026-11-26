@@ -288,6 +288,50 @@ void main() {
       expect(lines.first, 'remote: ssh ok');
     });
 
+    test('creates a public GitHub repository when requested', () async {
+      final runs = <String>[];
+      final publicSite = NewSite(
+        server: site.server,
+        name: site.name,
+        domain: site.domain,
+        url: site.url,
+        template: site.template,
+        parentDir: site.parentDir,
+        github: site.github,
+        githubPrivate: false,
+      );
+      final failed = await SiteCreator((exe, args, onOutput,
+          {String? workingDirectory}) async {
+        runs.add('$exe ${args.join(' ')}');
+        onOutput('$exe ok');
+        return 0;
+      }).create(publicSite, onStep: (_) {}, onOutput: (_) {});
+
+      expect(failed, isNull);
+      expect(runs.last,
+          'gh repo create shop --public --source /home/me/repos/shop --remote origin --push');
+    });
+
+    test('skips the GitHub repository when it is not requested', () async {
+      final runs = <String>[];
+      final localSite = NewSite(
+        server: site.server,
+        name: site.name,
+        domain: site.domain,
+        url: site.url,
+        template: site.template,
+        parentDir: site.parentDir,
+      );
+      final failed = await SiteCreator((exe, args, onOutput,
+          {String? workingDirectory}) async {
+        runs.add(exe);
+        return 0;
+      }).create(localSite, onStep: (_) {}, onOutput: (_) {});
+
+      expect(failed, isNull);
+      expect(runs, ['ssh', 'git']);
+    });
+
     test('stops at the first failing step', () async {
       final runs = <String>[];
       final failed = await SiteCreator((exe, args, onOutput,
@@ -341,7 +385,9 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('New site from a template'));
+      await tester.tap(find.byTooltip('Add site'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New on KMyServer'));
       await tester.pumpAndSettle();
       expect(find.text('New site from a template'), findsOneWidget);
 
@@ -351,7 +397,7 @@ void main() {
           find.widgetWithText(TextFormField, 'Domain'), 'shop.localhost');
       // The address follows the domain, with the server's port for the sites.
       expect(find.text('https://shop.localhost:8443'), findsOneWidget);
-      await tester.tap(find.text('Create a private GitHub repository'));
+      await tester.tap(find.text('Create a GitHub repository'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
@@ -364,6 +410,90 @@ void main() {
       expect(sites.single.mainTarget.url, 'https://shop.localhost:8443');
       expect(sites.single.mainTarget.server, 'Test VM');
       expect(sites.single.repoPath, endsWith('/repos/shop'));
+    });
+
+    testWidgets('the dialog can create a public GitHub repository',
+        (tester) async {
+      tester.view.physicalSize = const Size(1000, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final runs = <String>[];
+      await tester.pumpWidget(MyApp(
+        preferences: _Memory([_plesk, _vm], 'Plesk'),
+        services: AppServices(
+          settings: _Sites(<Site>[]),
+          fetchInfo: (_) async =>
+              const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+          checkRepo: (_, __) async =>
+              const RepoStatus(branch: 'master', uncommitted: 0),
+          readLocal: (_) async => throw Exception('none'),
+          openInTargets: const [],
+          pathExists: (_) async => false,
+          run: (exe, args, onOutput, {String? workingDirectory}) async {
+            runs.add('$exe ${args.join(' ')}');
+            onOutput('done');
+            return 0;
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Add site'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New on KMyServer'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Name'), 'shop');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Domain'), 'shop.localhost');
+      await tester.tap(find.text('Private repository'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(runs.last, startsWith('gh repo create shop --public --source '));
+      expect(runs.last, endsWith('/repos/shop --remote origin --push'));
+      expect(runs.last, isNot(contains('--private')));
+    });
+
+    testWidgets(
+        'one wizard switches between an existing project and a new site',
+        (tester) async {
+      await tester.pumpWidget(MyApp(
+        preferences: _Memory([_plesk, _vm], 'Plesk'),
+        services: AppServices(
+          settings: _Sites(<Site>[]),
+          fetchInfo: (_) async =>
+              const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+          checkRepo: (_, __) async =>
+              const RepoStatus(branch: 'master', uncommitted: 0),
+          readLocal: (_) async => throw Exception('none'),
+          openInTargets: const [],
+          pathExists: (_) async => false,
+          run: (_, __, ___, {String? workingDirectory}) async => 0,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Add site'));
+      await tester.pumpAndSettle();
+      expect(
+          find.widgetWithText(TextField, 'Local repository'), findsOneWidget);
+      expect(find.text('No environment yet — add one to continue.'),
+          findsOneWidget);
+
+      await tester.tap(find.text('New on KMyServer'));
+      await tester.pumpAndSettle();
+      expect(find.text('New site from a template'), findsOneWidget);
+      expect(find.text('Create a GitHub repository'), findsOneWidget);
+
+      await tester.tap(find.text('Existing project'));
+      await tester.pumpAndSettle();
+      expect(
+          find.widgetWithText(TextField, 'Local repository'), findsOneWidget);
+      expect(find.text('No environment yet — add one to continue.'),
+          findsOneWidget);
     });
   });
 

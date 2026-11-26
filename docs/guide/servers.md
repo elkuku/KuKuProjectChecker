@@ -66,7 +66,8 @@ The status pane itself keeps only host-level information and actions. It never r
 command — every button sends a fixed argument list over SSH, shows the command, streams the output
 and shows the exit code. A non-zero exit is always visible.
 
-- **Server:** refresh the report, run a backup, send a test mail, or open the **New site…** wizard.
+- **Server:** refresh the report, run a backup, send a test mail, or open the add-site wizard already
+  switched to **New on KMyServer** with this server selected.
 - **Each site:** the actions above, from the site's card in the project list.
 
 **Remove site** first shows a dry run that changes nothing. To go on you must type the site name;
@@ -75,16 +76,18 @@ before anything is removed.
 
 ## New site from a template
 
-The ➕ button with the box (**New site from a template**) creates a complete site on a KMyServer
-server:
+The single ＋ **Add site** button in the top bar opens one wizard with a switch: **Existing project**
+registers a project you already have locally, **New on KMyServer** creates one on a server. The
+server pane's **New site…** opens the same wizard on the template step. Creating a new site means:
 
 1. **On the server** — `site-add <name> --domain <domain> --template <template>` runs as root over
    SSH: user, database, PHP pool, Caddy site, and the template is deployed at once. Its steps show
    in the log.
 2. **Locally** — the site's repository is cloned into `<folder>/<name>`, with the server's remote
    name (e.g. `kmyserver`) instead of `origin`.
-3. **GitHub** (optional) — `gh repo create <name> --private --source <folder>/<name> --remote origin --push`
-   makes a private repository with the GitHub CLI and pushes the code there.
+3. **GitHub** (optional) — `gh repo create <name> --private|--public --source <folder>/<name> --remote origin --push`
+   makes a repository with the GitHub CLI and pushes the code there. **Private repository** is
+   checked by default (as before); uncheck it to create a public repository.
 
 Then **Add to the list** adds the site with its address and local repository.
 

@@ -177,11 +177,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Shop');
-    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
-    await tester.pumpAndSettle();
 
-    // The address is part of the first environment.
-    expect(find.text('First environment'), findsOneWidget);
+    // The address is part of the first environment, edited inside the same wizard.
     await tester.tap(find.text('Add environment'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'plesk');
@@ -189,7 +186,7 @@ void main() {
         'https://shop.example.com');
     await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
 
     expect(find.text('Shop'), findsOneWidget);

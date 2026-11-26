@@ -18,8 +18,10 @@ first environment is the project's main address (used for versions and **Open in
 ![Editing a site](../screenshots/05_edit_site-dark.png){.theme-dark}
 ![Editing a site](../screenshots/05_edit_site-light.png){.theme-light}
 
-- **Add a site** with ＋ in the top bar (or **Add site** while the list is empty): first the project
-  details, then its **first environment** with the address. Nothing is saved before it has one.
+- **Add a site** with the single ＋ in the top bar (or **Add site** while the list is empty): the
+  wizard starts on **Existing project** — enter the project details and its **first environment**
+  with the address, all in the same dialog. Nothing is saved before it has one. Switch to
+  **New on KMyServer** to create a site on a server instead; see [Servers and new sites](./servers).
 - **Edit a project** with the **Edit…** button on its row; this never changes its environments.
 - **Remove a site** with **Remove** in the expanded row details; **Undo** in the message at the
   bottom brings it back.

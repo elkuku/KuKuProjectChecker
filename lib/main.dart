@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -5,6 +7,7 @@ import 'support/app_services.dart';
 import 'support/kmyserver.dart';
 import 'support/preferences.dart';
 import 'support/repo_status.dart';
+import 'support/single_instance.dart';
 import 'support/server.dart';
 import 'support/server_actions.dart';
 import 'support/site.dart';
@@ -15,7 +18,7 @@ import 'support/server_health.dart' show ServerHealth, SiteHealth;
 import 'widgets/deploy_dialog.dart';
 import 'widgets/deploy_to_server_dialog.dart';
 import 'widgets/environments_dialog.dart';
-import 'widgets/new_site_dialog.dart';
+import 'widgets/add_site_dialog.dart';
 import 'widgets/rollback_dialog.dart';
 import 'widgets/servers_dialog.dart';
 import 'widgets/server_action_dialog.dart';
@@ -24,7 +27,19 @@ import 'widgets/site_dialog.dart';
 import 'widgets/site_card.dart';
 import 'widgets/site_row_action.dart';
 
-void main() {
+/// Held for the lifetime of the app; a second launch cannot claim it.
+SingleInstance? _instance;
+
+Future<void> main() async {
+  // Check before initializing Flutter: a rejected second launch must exit at
+  // once, without starting a GTK event loop.
+  _instance = await SingleInstance.acquire();
+  if (_instance == null) {
+    stderr.writeln('KuKuProjectChecker is already running.');
+    // The Linux runner starts its event loop before Dart main; returning is
+    // not enough to end a rejected second launch.
+    exit(0);
+  }
   runApp(const MyApp());
 }
 
@@ -409,31 +424,6 @@ class _MyHomePageState extends State<MyHomePage> {
     _reloadHealth();
   }
 
-  Future<void> _newSite() async {
-    final kmyservers = servers.where((server) => server.isKMyServer).toList();
-    if (kmyservers.isEmpty) {
-      _showMessage(
-          'Add a KMyServer server first (Servers…, with its SSH host)');
-      return;
-    }
-    final site = await showNewSiteDialog(
-      context,
-      servers: kmyservers,
-      server: _active?.isKMyServer == true ? _active : null,
-      run: services.run,
-      pickFolder: services.pickFolder,
-      exists: services.pathExists,
-    );
-    if (site == null || !mounted) return;
-
-    setState(() {
-      sites.add(site);
-      siteInfos.add(_siteInfo(site));
-    });
-    await _save();
-    _reloadHealth();
-  }
-
   /// Reads the sites and everything about them again.
   void loadInfos() {
     services.settings.readSettings().then((saved) {
@@ -512,27 +502,27 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<void> _addSite() async {
-    // First the project details, then its address: a site is not stored before it
-    // has at least one environment.
-    final details =
-        await showSiteDialog(context, pickFolder: services.pickFolder);
-    if (details == null || !mounted) return;
-    final targets = await showEnvironmentsDialog(context,
-        targets: const [], servers: servers);
-    if (targets == null || targets.isEmpty || !mounted) return;
-
-    final site = Site(
-      name: details.name,
-      repoPath: details.repoPath,
-      devUrl: details.devUrl,
-      targets: targets,
+  /// One wizard for both ways of adding a site. The server pane preselects the
+  /// template flow; the top bar and the empty list open it on an existing project.
+  Future<void> _addSite(
+      {AddSiteSource source = AddSiteSource.existing, Server? server}) async {
+    final site = await showAddSiteDialog(
+      context,
+      servers: servers,
+      server: server,
+      source: source,
+      run: services.run,
+      pickFolder: services.pickFolder,
+      exists: services.pathExists,
     );
+    if (site == null || !mounted) return;
+
     setState(() {
       sites.add(site);
       siteInfos.add(_siteInfo(site));
     });
     await _save();
+    _reloadHealth();
   }
 
   Future<void> _editSite(int index) async {
@@ -898,7 +888,8 @@ class _MyHomePageState extends State<MyHomePage> {
         report: _health[server.name]!,
         onReload: _reloadHealth,
         run: services.run,
-        onNewSite: _newSite,
+        onNewSite: () =>
+            _addSite(source: AddSiteSource.template, server: server),
       );
 
   Widget _siteList(BuildContext context) {
@@ -988,11 +979,6 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
         actions: [
           _serverMenu(),
-          IconButton(
-            onPressed: _newSite,
-            tooltip: 'New site from a template',
-            icon: const Icon(Icons.add_box_outlined),
-          ),
           IconButton(
             onPressed: _addSite,
             tooltip: 'Add site',
