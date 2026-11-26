@@ -6,28 +6,26 @@ import 'package:flutter/material.dart';
 import '../support/repo_status.dart';
 import '../support/site.dart';
 
-/// Lists the remotes of a repository as (name, URL).
-typedef ListRemotes = Future<List<(String, String)>> Function(String repoPath);
+/// The parts of a project that are not an environment. The address and deploy remote
+/// are edited in the Environments dialog.
+typedef SiteDetails = ({String name, String repoPath, String devUrl});
 
 /// Asks for a folder, starting in [initialDirectory]; null if the user cancelled.
 typedef PickFolder = Future<String?> Function(String? initialDirectory);
 
 /// The system's folder chooser.
 Future<String?> pickFolder(String? initialDirectory) => getDirectoryPath(
-    initialDirectory: initialDirectory, confirmButtonText: 'Choose');
+      initialDirectory: initialDirectory,
+      confirmButtonText: 'Choose',
+    );
 
-/// Asks for a site's name, address, local repository and deploy remote; [site] is the one
-/// to edit, or null to add a new one. [listRemotes] reads the repository's remotes for the
-/// deploy remote choice, [pickFolder] chooses the repository folder. Returns the site, or
-/// null if the dialog was cancelled.
-Future<Site?> showSiteDialog(BuildContext context,
-        {Site? site,
-        ListRemotes listRemotes = RepoStatus.remotes,
-        PickFolder pickFolder = pickFolder}) =>
-    showDialog<Site>(
+/// Asks for a project's name, local repository and dev site; [site] is the one to edit,
+/// or null to add a new one. Returns the details, or null if the dialog was cancelled.
+Future<SiteDetails?> showSiteDialog(BuildContext context,
+        {Site? site, PickFolder pickFolder = pickFolder}) =>
+    showDialog<SiteDetails>(
       context: context,
-      builder: (_) => _SiteDialog(
-          site: site, listRemotes: listRemotes, pickFolder: pickFolder),
+      builder: (_) => _SiteDialog(site: site, pickFolder: pickFolder),
     );
 
 /// [path] with the home folder written as ~, like the paths typed in by hand.
@@ -41,11 +39,9 @@ String collapseHome(String path) {
 
 class _SiteDialog extends StatefulWidget {
   final Site? site;
-  final ListRemotes listRemotes;
   final PickFolder pickFolder;
 
-  const _SiteDialog(
-      {this.site, required this.listRemotes, required this.pickFolder});
+  const _SiteDialog({this.site, required this.pickFolder});
 
   @override
   State<_SiteDialog> createState() => _SiteDialogState();
@@ -53,7 +49,6 @@ class _SiteDialog extends StatefulWidget {
 
 class _SiteDialogState extends State<_SiteDialog> {
   late final name = TextEditingController(text: widget.site?.name ?? '');
-  late final url = TextEditingController(text: widget.site?.url ?? 'https://');
   late final repoPath =
       TextEditingController(text: widget.site?.repoPath ?? '');
   late final devUrl = TextEditingController(text: widget.site?.devUrl ?? '');
@@ -62,56 +57,28 @@ class _SiteDialogState extends State<_SiteDialog> {
   String? get devUrlError =>
       devUrl.text.trim().isEmpty ? null : Site.urlError(devUrl.text);
 
-  /// Site.autoDeploy, Site.noDeploy or a remote name.
-  late String deployRemote = widget.site?.deployRemote ?? Site.autoDeploy;
-
-  /// The remotes of the repository in the field, read again when the path changes.
-  Future<List<(String, String)>>? remotes;
-  String _remotesOf = '';
-
   /// The address error shows only after the first try to save.
   bool showErrors = false;
 
   bool get isNew => widget.site == null;
 
   @override
-  void initState() {
-    super.initState();
-    _readRemotes();
-    repoPath.addListener(_readRemotes);
-  }
-
-  void _readRemotes() {
-    final path = repoPath.text.trim();
-    if (path == _remotesOf && remotes != null) return;
-
-    setState(() {
-      _remotesOf = path;
-      remotes =
-          path.isEmpty ? Future.value(const []) : widget.listRemotes(path);
-    });
-  }
-
-  @override
   void dispose() {
     name.dispose();
-    url.dispose();
     repoPath.dispose();
     devUrl.dispose();
     super.dispose();
   }
 
   void _save() {
-    if (Site.urlError(url.text) != null || devUrlError != null) {
+    if (devUrlError != null) {
       setState(() => showErrors = true);
       return;
     }
 
-    Navigator.of(context).pop(Site(
+    Navigator.of(context).pop((
       name: name.text.trim(),
-      url: url.text.trim(),
       repoPath: repoPath.text.trim(),
-      deployRemote: deployRemote,
       devUrl: devUrl.text.trim(),
     ));
   }
@@ -131,55 +98,6 @@ class _SiteDialogState extends State<_SiteDialog> {
     repoPath.text = collapseHome(chosen);
   }
 
-  Widget _deployRemoteField() => FutureBuilder<List<(String, String)>>(
-        future: remotes,
-        builder: (context, snapshot) {
-          final loaded = snapshot.connectionState == ConnectionState.done;
-          final list = snapshot.data ?? const <(String, String)>[];
-          final names = [for (final (name, _) in list) name];
-          final picked = RepoStatus.pickDeployRemote(list);
-
-          final automatic = !loaded
-              ? 'Automatic'
-              : picked == null
-                  ? 'Automatic (none found)'
-                  : 'Automatic ($picked)';
-
-          return DropdownButtonFormField<String>(
-            // Rebuilt when the remotes change, so the shown choice stays valid.
-            key:
-                ValueKey('deployRemote:$_remotesOf:$loaded:${names.join(',')}'),
-            initialValue: deployRemote,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Deploy remote',
-              helperText: 'The git remote that Deploy pushes to',
-            ),
-            items: [
-              DropdownMenuItem(value: Site.autoDeploy, child: Text(automatic)),
-              for (final (name, url) in list)
-                DropdownMenuItem(
-                  value: name,
-                  child:
-                      Text('$name  ·  $url', overflow: TextOverflow.ellipsis),
-                ),
-              // A saved remote the repository doesn't have (any more).
-              if (deployRemote != Site.autoDeploy &&
-                  deployRemote != Site.noDeploy &&
-                  !names.contains(deployRemote))
-                DropdownMenuItem(
-                  value: deployRemote,
-                  child:
-                      Text(loaded ? '$deployRemote (not found)' : deployRemote),
-                ),
-              const DropdownMenuItem(
-                  value: Site.noDeploy, child: Text('No deploys')),
-            ],
-            onChanged: (value) => setState(() => deployRemote = value!),
-          );
-        },
-      );
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -195,23 +113,9 @@ class _SiteDialogState extends State<_SiteDialog> {
               decoration: const InputDecoration(
                 labelText: 'Name',
                 helperText:
-                    'Optional; without one, the host of the address is used',
+                    'Optional; the first environment is used when empty',
               ),
               textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            ListenableBuilder(
-              listenable: url,
-              builder: (context, _) => TextField(
-                controller: url,
-                decoration: InputDecoration(
-                  labelText: 'Site URL',
-                  hintText: 'https://shop.example.com',
-                  errorText: showErrors ? Site.urlError(url.text) : null,
-                ),
-                keyboardType: TextInputType.url,
-                textInputAction: TextInputAction.next,
-              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -229,10 +133,6 @@ class _SiteDialogState extends State<_SiteDialog> {
               ),
               onSubmitted: (_) => _save(),
             ),
-            if (_remotesOf.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _deployRemoteField(),
-            ],
             const SizedBox(height: 12),
             ListenableBuilder(
               listenable: devUrl,

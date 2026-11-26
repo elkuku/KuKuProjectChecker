@@ -28,10 +28,9 @@ The switch in the app bar picks the server whose status is shown beside the proj
   project rows.
 
 A project's deploy remote comes from its [environments](./settings#environments): the target for
-the active server wins, otherwise the first target is used. A project still using the older single
-site form keeps the previous behaviour: the active server's remote is used for it. A target with
-**`-`** as remote never deploys. The 🚀 button is greyed out when nothing can be deployed; add the
-remote to the repository if needed.
+the active server wins, otherwise the first target is used. A target with **`-`** as remote never
+deploys. The 🚀 button is greyed out when nothing can be deployed; add the remote to the repository
+if needed.
 
 **Roll back** is offered on a row when a KMyServer reports about one of its environments.
 
@@ -47,11 +46,21 @@ second site list in the status pane:
 - A server site without a local project appears at the end of the list as a temporary row, marked
   *not in the projects* when expanded. Nothing is saved for it; it disappears when another server
   is selected or the site is removed. Its buttons offer the same server actions.
-- A project that is not on a server gets a **Deploy to `<server>`…** button in its expanded details.
-  It asks which site name, domain and git template to use (prefilled from the project, that
-  server's domain suffix and its remotes), runs `site-add` as root, adds the server remote locally
-  and then uses the usual Deploy dialog to push the branch. The chosen domain/name is saved back
-  into the project's environment.
+- When a KMyServer is selected, a project that is **not on that server yet** gets a
+  **Deploy to `<server>`…** button in its expanded details. It is not shown for other servers or
+  for a project that already has an environment there. It asks which site name, domain and git
+  template to use (prefilled from the project, that server's domain suffix and its remotes), runs
+  `site-add` as root, adds the server remote locally and then uses the usual Deploy dialog to push
+  the branch. The chosen domain/name is saved back into the project's environment.
+
+  If the project's local compose files or `.env` show a database, **Create PostgreSQL database**
+  is preselected; you can override it. The dialog then lists the server's dated backup sets
+  (`site-db-backups list`) and lets you pick a `pg-*.dump` to import into the new database before
+  the push (`site-db-import`). The import first clears objects the template deploy created, so
+  the dump's schema and data are restored. The newest dump is selected by default; **No backup
+  (empty database)** is also available. KMyServer only offers PostgreSQL — a MariaDB project needs
+  a separate migration. A failed import stops the flow: the site and DB were created, but nothing
+  is deployed and the error is shown. No database password is ever stored in the app.
 
 The status pane itself keeps only host-level information and actions. It never runs a free-form
 command — every button sends a fixed argument list over SSH, shows the command, streams the output

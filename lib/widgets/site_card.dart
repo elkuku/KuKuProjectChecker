@@ -67,7 +67,8 @@ class _SiteCardState extends State<SiteCard> {
       margin: const EdgeInsets.fromLTRB(12, 3, 12, 3),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: widget.onTap,
+        // Clicking the row shows its details; changes and deploy stay buttons.
+        onTap: () => setState(() => expanded = !expanded),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

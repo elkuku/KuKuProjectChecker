@@ -40,9 +40,9 @@ class _Light extends Preferences {
   Future<void> writeThemeMode(ThemeMode mode) async {}
 }
 
-const _shop = Site(
+final _shop = legacySite(
     name: 'Shop', url: 'https://shop.example.com', repoPath: '/repos/shop');
-const _blog = Site(name: 'Blog', url: 'https://blog.example.com');
+final _blog = legacySite(name: 'Blog', url: 'https://blog.example.com');
 
 void main() {
   late _MemorySettings settings;
@@ -96,26 +96,23 @@ void main() {
   TextField field(WidgetTester tester, String label) =>
       tester.widget<TextField>(find.widgetWithText(TextField, label));
 
-  testWidgets('choose the deploy remote of a site', (tester) async {
+  testWidgets('choose the deploy remote of an environment', (tester) async {
     await showApp(tester, [_shop]);
-    expect(checkedWith, [Site.autoDeploy]);
+    expect(checkedWith, [SiteTarget.autoDeploy]);
 
-    await tapRowButton(tester, 'Shop', 'Edit…');
-
-    // Automatic shows what it would pick; every remote is offered.
-    expect(find.text('Automatic (production)'), findsOneWidget);
-    await tester.tap(find.text('Automatic (production)'));
+    await tapRowButton(tester, 'Shop', 'Environments…');
+    await tester.tap(find.byTooltip('Edit Shop'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('staging  ·  shop@staging'), findsOneWidget);
-    expect(find.text('No deploys'), findsOneWidget);
 
-    await tester.tap(find.textContaining('staging  ·  shop@staging').last);
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Deploy remote'), 'staging');
+    await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
-    expect(settings.sites.single.deployRemote, 'staging');
-    expect(checkedWith, [Site.autoDeploy, 'staging'],
+    expect(settings.sites.single.mainTarget.deployRemote, 'staging');
+    expect(checkedWith, [SiteTarget.autoDeploy, 'staging'],
         reason: 'The site is checked again with the chosen remote');
   });
 
@@ -131,12 +128,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(field(tester, 'Local repository').controller!.text, '');
 
-    // A folder in the home folder is shown with ~, and the deploy remote appears.
+    // A folder in the home folder is shown with ~.
     picked = '$home/repos/blog';
     await tester.tap(find.byTooltip('Choose the folder'));
     await tester.pumpAndSettle();
     expect(field(tester, 'Local repository').controller!.text, '~/repos/blog');
-    expect(find.text('Deploy remote'), findsOneWidget);
 
     // Other folders stay as they are.
     picked = '/srv/blog';
@@ -159,16 +155,18 @@ void main() {
     expect(collapseHome('/srv/shop'), '/srv/shop');
   });
 
-  testWidgets('no deploy remote choice without a repository', (tester) async {
+  testWidgets('the edit dialog holds only the project details', (tester) async {
     await showApp(tester, [_blog]);
 
     await tapRowButton(tester, 'Blog', 'Edit…');
 
+    // The address and deploy remote belong to the environments now.
+    expect(find.widgetWithText(TextField, 'Site URL'), findsNothing);
     expect(find.text('Deploy remote'), findsNothing);
     await tester.enterText(
         find.widgetWithText(TextField, 'Local repository'), '~/repos/blog');
     await tester.pumpAndSettle();
-    expect(find.text('Deploy remote'), findsOneWidget);
+    expect(find.text('Deploy remote'), findsNothing);
   });
 
   testWidgets('an empty list offers to add a site', (tester) async {
@@ -179,35 +177,49 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Shop');
-    await tester.enterText(
-        find.widgetWithText(TextField, 'Site URL'), 'https://shop.example.com');
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+
+    // The address is part of the first environment.
+    expect(find.text('First environment'), findsOneWidget);
+    await tester.tap(find.text('Add environment'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'plesk');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Address'),
+        'https://shop.example.com');
+    await tester.tap(find.widgetWithText(FilledButton, 'OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
     expect(find.text('Shop'), findsOneWidget);
-    expect(settings.sites.single.url, 'https://shop.example.com');
+    expect(settings.sites.single.mainTarget.url, 'https://shop.example.com');
     expect(fetched, ['https://shop.example.com']);
   });
 
-  testWidgets('a new site needs a valid address', (tester) async {
+  testWidgets('a new environment needs a valid address', (tester) async {
     await showApp(tester, [_shop]);
 
-    await tester.tap(find.byTooltip('Add site'));
+    await tapRowButton(tester, 'Shop', 'Environments…');
+    await tester.tap(find.text('Add environment'));
     await tester.pumpAndSettle();
-    expect(field(tester, 'Site URL').controller!.text, 'https://');
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'vm');
+    await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
     expect(find.text('Enter the address of the site'), findsOneWidget);
 
     await tester.enterText(
-        find.widgetWithText(TextField, 'Site URL'), 'shop.example.com');
-    await tester.pump();
+        find.widgetWithText(TextFormField, 'Address'), 'shop.example.com');
+    await tester.tap(find.widgetWithText(FilledButton, 'OK'));
+    await tester.pumpAndSettle();
     expect(find.text('Use a full address, like https://shop.example.com'),
         findsOneWidget);
     expect(settings.writes, 0);
 
     // Cancel adds nothing.
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(settings.sites, hasLength(1));

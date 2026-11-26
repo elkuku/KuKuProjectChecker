@@ -4,18 +4,17 @@ A site whose local repository has a **deploy remote** can be deployed from the a
 current branch to that remote, and the server (e.g. Plesk with automatic deployment) deploys the
 new version.
 
-Choose the deploy remote in the site's **Edit…** dialog, see [Managing sites](./settings). Left on
-**Automatic**, the app picks the first git remote that is not `origin`, not an HTTP(S) address and
-not on GitHub, GitLab, Bitbucket or Codeberg, e.g.:
+Choose the deploy remote in the project's [Environments…](./settings#environments) dialog. Blank
+means automatic: the app picks the first git remote that is not `origin`, not an HTTP(S) address
+and not on GitHub, GitLab, Bitbucket or Codeberg, e.g.:
 
 ```bash
 git remote add production user@server:~/git/shop.git
 ```
 
-**No deploys** hides deploying for a site, e.g. one that is deployed some other way.
-
-To send **all** sites to one server, e.g. while moving to a new one, use the server switch in
-the app bar, see [Servers and new sites](./servers).
+A `-` in the **Deploy remote** field hides deploying for that environment, e.g. one that is
+deployed some other way. The remote of the environment for the selected server wins; otherwise
+the first environment's remote is used, see [Servers and new sites](./servers).
 
 ## Deploy
 

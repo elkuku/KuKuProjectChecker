@@ -50,22 +50,23 @@ class _EnvironmentsDialogState extends State<_EnvironmentsDialog> {
     return AlertDialog(
       scrollable: true,
       icon: const Icon(Icons.layers_outlined),
-      title: const Text('Project environments'),
+      title:
+          Text(targets.isEmpty ? 'First environment' : 'Project environments'),
       content: SizedBox(
         width: 560,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Each environment has its own address and deploy remote. A server with a '
-              'domain suffix suggests a domain for new sites.',
-            ),
+            Text(targets.isEmpty
+                ? 'Add the address of this project. You can add more environments later.'
+                : 'Each environment has its own address and deploy remote. A server with a '
+                    'domain suffix suggests a domain for new sites.'),
             const SizedBox(height: 12),
             if (targets.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No environments yet.'),
+                child: Text('No environment yet — add one to continue.'),
               ),
             for (final (index, target) in targets.indexed)
               ListTile(
@@ -110,7 +111,8 @@ class _EnvironmentsDialogState extends State<_EnvironmentsDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(targets),
+          onPressed:
+              targets.isEmpty ? null : () => Navigator.of(context).pop(targets),
           child: const Text('Save'),
         ),
       ],

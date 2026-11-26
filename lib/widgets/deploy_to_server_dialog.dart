@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../screens/changes_screen.dart' show monoTextStyle;
+import '../support/db_backup.dart' show DbDumpChoice, ServerDbBackups;
 import '../support/deployer.dart' show PushFunction, RunFunction;
 import '../support/repo_status.dart';
 import '../support/server.dart';
@@ -14,6 +15,7 @@ typedef DeployToServerResult = ({
   String siteName,
   String domain,
   bool pushed,
+  String? error,
 });
 
 /// Creates a site for a local project on a KMyServer, then pushes the project to it.
@@ -26,6 +28,7 @@ Future<DeployToServerResult?> showDeployToServerDialog(
   required String repoPath,
   required RepoStatus status,
   required List<(String, String)> remotes,
+  bool dbDetected = false,
   required RunFunction run,
   required PushFunction push,
 }) =>
@@ -39,6 +42,7 @@ Future<DeployToServerResult?> showDeployToServerDialog(
         repoPath: repoPath,
         status: status,
         remotes: remotes,
+        dbDetected: dbDetected,
         run: run,
         push: push,
       ),
@@ -64,6 +68,7 @@ class DeployToServerDialog extends StatefulWidget {
   final String repoPath;
   final RepoStatus status;
   final List<(String, String)> remotes;
+  final bool dbDetected;
   final RunFunction run;
   final PushFunction push;
 
@@ -75,6 +80,7 @@ class DeployToServerDialog extends StatefulWidget {
     required this.repoPath,
     required this.status,
     required this.remotes,
+    this.dbDetected = false,
     required this.run,
     required this.push,
   });
@@ -93,6 +99,13 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
   late final template =
       TextEditingController(text: suggestedTemplate(widget.remotes) ?? '');
 
+  /// Prefilled from the project's local configuration, but overridable here.
+  late bool createDb = widget.dbDetected;
+  List<DbDumpChoice> dumps = const [];
+  String selectedDump = '';
+  bool loadingDumps = false;
+  String? dumpsError;
+
   _Stage stage = _Stage.form;
   final List<String> output = [];
   int exitCode = 0;
@@ -106,6 +119,37 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (createDb) _loadDumps();
+  }
+
+  /// Reads the dated backup sets already on this server. This is read-only; the
+  /// dump is only imported after the user confirms and the site has been created.
+  Future<void> _loadDumps() async {
+    setState(() {
+      loadingDumps = true;
+      dumpsError = null;
+    });
+    try {
+      final found = await ServerDbBackups.fetch(widget.server, widget.run);
+      if (!mounted) return;
+      setState(() {
+        dumps = found;
+        selectedDump = found.isEmpty ? '' : found.first.path;
+        loadingDumps = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        selectedDump = '';
+        dumpsError = '$e';
+        loadingDumps = false;
+      });
+    }
   }
 
   /// Use the project's origin (or any other https remote) as site-add's template.
@@ -126,7 +170,18 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
         domain.text.trim(),
         '--template',
         template.text.trim(),
+        if (createDb) ...['--db', 'postgresql'],
       ]);
+
+  /// Null when no backup dump is selected: site-add leaves the new database empty.
+  List<String>? get importArgs {
+    if (!createDb || selectedDump.isEmpty) return null;
+    return widget.server.sshArgs('root', [
+      '/usr/local/sbin/site-db-import',
+      name.text.trim(),
+      selectedDump,
+    ]);
+  }
 
   /// git needs the new site's remote in the local repository before the push.
   ({String executable, List<String> arguments})? get remoteCommand {
@@ -203,6 +258,31 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
         }
       }
 
+      // The database is still empty here. Import the chosen dump before the push,
+      // so a failed restore stops the flow instead of deploying onto a wrong DB.
+      final import = importArgs;
+      if (import != null) {
+        exitCode = await widget.run('ssh', import, _log);
+        if (exitCode != 0) {
+          if (mounted) {
+            // The site and its database were created; record them, but never
+            // claim that the deploy finished.
+            result = (
+              siteName: siteName,
+              domain: domain.text.trim(),
+              pushed: false,
+              error: 'Importing the database backup failed (exit $exitCode): '
+                  'the site and its database were created, but nothing was deployed',
+            );
+            setState(() {
+              error = result!.error;
+              stage = _Stage.failed;
+            });
+          }
+          return;
+        }
+      }
+
       // The site exists now, so the usual deploy dialog can push to its repository.
       // That dialog has its own progress indicator, so this one stops animating.
       if (!mounted) return;
@@ -227,6 +307,7 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
         siteName: siteName,
         domain: domain.text.trim(),
         pushed: pushed,
+        error: null,
       );
       setState(() {
         stage = pushed ? _Stage.done : _Stage.failed;
@@ -330,12 +411,69 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
                   ],
                 ),
               ],
+              const SizedBox(height: 4),
+              CheckboxListTile(
+                value: createDb,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                onChanged: running
+                    ? null
+                    : (value) {
+                        setState(() => createDb = value ?? false);
+                        if (createDb && dumps.isEmpty && dumpsError == null) {
+                          _loadDumps();
+                        }
+                      },
+                title: const Text('Create PostgreSQL database'),
+                subtitle: Text(widget.dbDetected
+                    ? 'Detected in this project’s local configuration.'
+                    : 'This project does not seem to use a database.'),
+              ),
+              if (createDb) ...[
+                if (loadingDumps)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: LinearProgressIndicator(),
+                  ),
+                if (dumpsError != null)
+                  Text(dumpsError!,
+                      style: TextStyle(color: theme.colorScheme.error)),
+                DropdownButtonFormField<String>(
+                  // A new key when the list arrives makes initialValue follow the
+                  // newest dump; later user choices keep the same form field.
+                  key: ValueKey(dumps.isEmpty ? 'empty' : dumps.first.path),
+                  initialValue: selectedDump,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Import a backup',
+                    helperText:
+                        'Restored into the new database before the deploy',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: '',
+                      child: Text('No backup (empty database)'),
+                    ),
+                    for (final dump in dumps)
+                      DropdownMenuItem(
+                        value: dump.path,
+                        child: Text(dump.label),
+                      ),
+                  ],
+                  onChanged: loadingDumps
+                      ? null
+                      : (value) => setState(() => selectedDump = value ?? ''),
+                ),
+              ],
               const SizedBox(height: 12),
               Text(
                 [
                   'ssh ${siteArgs.join(' ')}',
                   if (remoteCommand case final command?)
                     '${command.executable} ${command.arguments.join(' ')}',
+                  if (importArgs case final command?)
+                    'ssh ${command.join(' ')}',
                   'git push ${widget.server.remote} ${widget.status.branch}',
                 ].join('\n'),
                 style: monoTextStyle.copyWith(

@@ -17,7 +17,7 @@ import 'helpers.dart';
 class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
-        const Site(
+        legacySite(
             name: 'Shop', url: 'https://shop.example.com', repoPath: '/repo')
       ];
 }
@@ -122,6 +122,23 @@ services:
       expect(
           LocalVersions.databaseFromCompose(['image: mariadb:latest']), isNull);
       expect(LocalVersions.databaseFromCompose(['image: adminer:4']), isNull);
+    });
+
+    test('reads the database platform from a local DATABASE_URL', () {
+      expect(
+          LocalVersions.databasePlatformFromEnv([
+            'APP_ENV=dev\nDATABASE_URL="postgresql://app:secret@db:5432/app?serverVersion=17"',
+          ]),
+          'postgresql');
+      expect(
+          LocalVersions.databasePlatformFromEnv(
+              ['export DATABASE_URL=mysql://app@127.0.0.1/app']),
+          'mysql');
+      expect(
+          LocalVersions.databasePlatformFromEnv(
+              ['# DATABASE_URL=postgres://example']),
+          isNull);
+      expect(LocalVersions.databasePlatformFromEnv(['APP_ENV=dev']), isNull);
     });
 
     test('an override file wins', () {

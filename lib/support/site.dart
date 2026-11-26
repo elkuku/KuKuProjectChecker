@@ -62,69 +62,48 @@ class SiteTarget {
   int get hashCode => Object.hash(name, server, url, deployRemote);
 }
 
-/// A site to check, with an optional name and the optional path to its local git repository.
+/// A project to check, with its local repository and its environments.
+/// The first [targets] entry is the main address of the project.
 class Site {
-  final String url;
   final String repoPath;
   final String name;
 
-  /// Which git remote Deploy pushes to: [autoDeploy] (the default) lets the app pick one,
-  /// [noDeploy] turns deploying off, anything else is the name of a remote.
-  final String deployRemote;
-
-  /// [deployRemote] value: the app picks the deploy remote, see RepoStatus.pickDeployRemote.
-  static const autoDeploy = '';
-
-  /// [deployRemote] value: the site is not deployed from the app. Git doesn't allow this
-  /// as a remote name.
-  static const noDeploy = '-';
-
-  /// The address of the site's dev version, which deploys itself from the code on
+  /// The address of the project's dev version, which deploys itself from the code on
   /// GitHub (e.g. via a webhook); empty if there is none.
   final String devUrl;
 
-  /// Environments of this project. Empty for settings written before this existed:
-  /// [environments] then derives one target from the fields above.
+  /// Environments of this project. Never empty for a saved site: adding a project asks
+  /// for its first environment before it is stored.
   final List<SiteTarget> targets;
 
   const Site({
-    required this.url,
     this.repoPath = '',
     this.name = '',
-    this.deployRemote = autoDeploy,
     this.devUrl = '',
-    this.targets = const [],
+    required this.targets,
   });
 
-  /// The saved targets, or one legacy target built from [url]/[deployRemote].
-  List<SiteTarget> get environments => targets.isNotEmpty
-      ? targets
-      : [
-          SiteTarget(
-            name: displayName,
-            url: url,
-            deployRemote: deployRemote,
-          )
-        ];
+  /// The main address of the project, used for versions, opening it and deploys.
+  SiteTarget get mainTarget => targets.first;
 
   Site withTargets(List<SiteTarget> targets) => Site(
-        url: url,
         repoPath: repoPath,
         name: name,
-        deployRemote: deployRemote,
         devUrl: devUrl,
         targets: targets,
       );
 
-  /// The name, or the URL's host if no name is set.
+  /// The name, or the main environment's name/URL host if no name is set.
   String get displayName {
     if (name.isNotEmpty) return name;
-    final host = Uri.tryParse(url)?.host ?? '';
+    final target = mainTarget;
+    if (target.name.isNotEmpty) return target.name;
+    final host = target.domain;
 
-    return host.isNotEmpty ? host : url;
+    return host.isNotEmpty ? host : target.url;
   }
 
-  /// An error for a site address, or null if [text] is a full http(s) URL.
+  /// An error for an environment address, or null if [text] is a full http(s) URL.
   static String? urlError(String text) {
     text = text.trim();
     if (text.isEmpty || text == 'https://' || text == 'http://') {
@@ -140,37 +119,55 @@ class Site {
     return null;
   }
 
-  /// Reads all formats: the old plain URL string and the {url, repoPath, name, deployRemote,
-  /// devUrl} map.
+  /// Reads current settings and the older formats with a single `url` (and `deployRemote`)
+  /// at the top level. Those fields become the first environment; they are not written again.
   factory Site.fromJson(dynamic json) {
-    String text(String key) => json[key] is String ? json[key] : '';
+    if (json is String) {
+      return Site(targets: [
+        SiteTarget(name: Uri.tryParse(json)?.host ?? '', url: json)
+      ]);
+    }
+    if (json is! Map<String, dynamic>) {
+      throw const FormatException('Invalid site in settings.');
+    }
 
-    return switch (json) {
-      String url => Site(url: url),
-      {'url': String url} => Site(
-          url: url,
-          repoPath: text('repoPath'),
-          name: text('name'),
-          deployRemote: text('deployRemote'),
-          devUrl: text('devUrl'),
-          targets: [
-            for (final target
-                in json['targets'] is List ? json['targets'] : const [])
-              if (target is Map<String, dynamic>) SiteTarget.fromJson(target),
-          ],
-        ),
-      _ => throw const FormatException('Invalid site in settings.'),
-    };
+    String text(String key) => json[key] is String ? json[key] : '';
+    final parsed = <SiteTarget>[];
+    if (json['targets'] is List) {
+      for (final target in json['targets']) {
+        if (target is Map<String, dynamic>) {
+          parsed.add(SiteTarget.fromJson(target));
+        }
+      }
+    }
+
+    final legacyUrl = text('url');
+    if (parsed.isEmpty) {
+      if (legacyUrl.isEmpty) {
+        throw const FormatException('Invalid site in settings.');
+      }
+      final legacyName = text('name');
+      parsed.add(SiteTarget(
+        name: legacyName.isNotEmpty
+            ? legacyName
+            : Uri.tryParse(legacyUrl)?.host ?? '',
+        url: legacyUrl,
+        deployRemote: text('deployRemote'),
+      ));
+    }
+
+    return Site(
+      name: text('name'),
+      repoPath: text('repoPath'),
+      devUrl: text('devUrl'),
+      targets: parsed,
+    );
   }
 
-  /// The deploy remote, the dev site and the targets are only written when set.
   Map<String, dynamic> toJson() => {
         'name': name,
-        'url': url,
         'repoPath': repoPath,
-        if (deployRemote != autoDeploy) 'deployRemote': deployRemote,
         if (devUrl.isNotEmpty) 'devUrl': devUrl,
-        if (targets.isNotEmpty)
-          'targets': [for (final target in targets) target.toJson()],
+        'targets': [for (final target in targets) target.toJson()],
       };
 }

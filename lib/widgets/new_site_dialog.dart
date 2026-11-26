@@ -181,8 +181,16 @@ class _NewSiteDialogState extends State<_NewSiteDialog> {
         _Stage.done => [
             FilledButton(
               onPressed: () => Navigator.of(context).pop(Site(
-                url: _site.url,
+                name: _site.name,
                 repoPath: _site.dir,
+                targets: [
+                  SiteTarget(
+                    name: _site.name,
+                    server: server.name,
+                    url: _site.url,
+                    deployRemote: server.remote,
+                  )
+                ],
               )),
               child: const Text('Add to the list'),
             ),

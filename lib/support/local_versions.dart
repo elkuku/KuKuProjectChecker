@@ -56,10 +56,20 @@ class LocalVersions {
     }
     final database = databaseFromCompose(composeTexts);
 
+    // A project may point at a database without a compose service (e.g. the
+    // production DATABASE_URL in .env.local), so fall back to the env files.
+    final envTexts = <String>[];
+    for (final folder in {repoPath, project}) {
+      for (final name in const ['.env', '.env.local']) {
+        final file = File('$folder/$name');
+        if (await file.exists()) envTexts.add(await file.readAsString());
+      }
+    }
+
     return LocalVersions(
       symfony: symfony,
       php: await (phpVersion ?? localPhpVersion)(),
-      dbPlatform: database?.$1,
+      dbPlatform: database?.$1 ?? databasePlatformFromEnv(envTexts),
       dbVersion: database?.$2,
     );
   }
@@ -152,6 +162,24 @@ class LocalVersions {
     }
 
     return found;
+  }
+
+  /// The database platform in a local `DATABASE_URL`, when no compose image was found.
+  /// The URL scheme is enough for the deploy dialog's checkbox; no credentials are read.
+  static String? databasePlatformFromEnv(List<String> files) {
+    final url = RegExp(
+      r'''^\s*(?:export\s+)?DATABASE_URL\s*=\s*["']?([^"'\s#]+)''',
+      multiLine: true,
+    );
+    for (final text in files) {
+      for (final match in url.allMatches(text)) {
+        final scheme = match.group(1)!.split('://').first.toLowerCase();
+        if (scheme.startsWith('postgres')) return 'postgresql';
+        if (scheme.startsWith('mysql')) return 'mysql';
+        if (scheme.startsWith('mariadb')) return 'mariadb';
+      }
+    }
+    return null;
   }
 
   /// True if [live] is the version [local] names, compared as far as [local] goes

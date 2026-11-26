@@ -1,5 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kuku_project_checker/support/site.dart';
+
+/// A project with one environment, for tests written before sites had explicit targets.
+Site legacySite({
+  required String url,
+  String name = '',
+  String repoPath = '',
+  String deployRemote = '',
+  String devUrl = '',
+}) =>
+    Site(
+      name: name,
+      repoPath: repoPath,
+      devUrl: devUrl,
+      targets: [
+        SiteTarget(
+          name: name.isNotEmpty ? name : Uri.tryParse(url)?.host ?? '',
+          url: url,
+          deployRemote: deployRemote,
+        )
+      ],
+    );
 
 /// The card containing [project] in its title.
 Finder projectCard(String project) => find.ancestor(

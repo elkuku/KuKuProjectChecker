@@ -260,20 +260,9 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Server> get _kmyServers =>
       servers.where((server) => server.isKMyServer).toList();
 
-  /// The environment of [info] on [server]. A project written before environments
-  /// existed has one implicit target, used only while that server is active.
-  SiteTarget? _targetForServer(SiteInfo info, Server server) {
-    if (info.targets.isEmpty) {
-      return _active?.name == server.name
-          ? SiteTarget(
-              name: info.name,
-              url: info.url,
-              deployRemote: info.deployRemote,
-            )
-          : null;
-    }
-    return info.targetFor(server.name);
-  }
+  /// The environment of [info] on [server].
+  SiteTarget? _targetForServer(SiteInfo info, Server server) =>
+      info.targetFor(server.name);
 
   /// A server site and an environment are the same when their address or name matches.
   static bool _sameTarget(SiteTarget target, SiteHealth health) {
@@ -340,28 +329,19 @@ class _MyHomePageState extends State<MyHomePage> {
         ? -1
         : sites.indexWhere((site) => identical(site, info.site));
     if (index < 0) {
-      index = sites.indexWhere(
-          (site) => site.url == info.url && site.repoPath == info.repoPath);
+      index = sites.indexWhere((site) =>
+          site.mainTarget.url == info.url && site.repoPath == info.repoPath);
     }
     if (index >= 0) sites[index] = sites[index].withTargets(targets);
   }
 
   Future<void> _editEnvironments(SiteInfo info) async {
-    final current = info.targets.isNotEmpty
-        ? info.targets
-        : info.site?.environments ??
-            [
-              SiteTarget(
-                  name: info.name,
-                  url: info.url,
-                  deployRemote: info.deployRemote)
-            ];
     final edited = await showEnvironmentsDialog(
       context,
-      targets: current,
+      targets: info.targets,
       servers: servers,
     );
-    if (edited == null || !mounted) return;
+    if (edited == null || edited.isEmpty || !mounted) return;
     _storeTargets(info, edited);
     await _save();
     if (!mounted) return;
@@ -380,6 +360,17 @@ class _MyHomePageState extends State<MyHomePage> {
     final status = await services.checkRepo(repoPath, server.remote);
     if (!mounted) return;
 
+    // A local database (compose/.env) prefills the dialog's DB option; the user
+    // can still override it. KMyServer creates PostgreSQL only.
+    var dbDetected = false;
+    try {
+      final local = await services.readLocal(RepoStatus.expandHome(repoPath));
+      dbDetected = local.dbPlatform != null;
+    } catch (_) {
+      dbDetected = false;
+    }
+    if (!mounted) return;
+
     final domain =
         target?.domain ?? server.siteDomain(suggestedSiteName(info.name));
     final result = await showDeployToServerDialog(
@@ -390,22 +381,15 @@ class _MyHomePageState extends State<MyHomePage> {
       repoPath: repoPath,
       status: status,
       remotes: remotes,
+      dbDetected: dbDetected,
       run: services.run,
       push: services.push,
     );
     if (result == null || !mounted) return;
+    // A failed import still records the site, but must stay visible as an error.
+    if (result.error case final message?) _showMessage(message);
 
-    final targets = [
-      ...info.targets.isNotEmpty
-          ? info.targets
-          : info.site?.environments ??
-              [
-                SiteTarget(
-                    name: info.name,
-                    url: info.url,
-                    deployRemote: info.deployRemote)
-              ],
-    ];
+    final targets = [...info.targets];
     final index = targets.indexWhere((item) => item.server == server.name);
     final updated = SiteTarget(
       name: index < 0 ? server.name : targets[index].name,
@@ -442,20 +426,9 @@ class _MyHomePageState extends State<MyHomePage> {
     );
     if (site == null || !mounted) return;
 
-    final server = _active?.isKMyServer == true ? _active : null;
-    final created = server == null
-        ? site
-        : site.withTargets([
-            SiteTarget(
-              name: server.name,
-              server: server.name,
-              url: site.url,
-              deployRemote: server.remote,
-            )
-          ]);
     setState(() {
-      sites.add(created);
-      siteInfos.add(_siteInfo(created));
+      sites.add(site);
+      siteInfos.add(_siteInfo(site));
     });
     await _save();
     _reloadHealth();
@@ -478,30 +451,23 @@ class _MyHomePageState extends State<MyHomePage> {
 
   /// Starts reading a site's versions, repository status and local versions.
   SiteInfo _siteInfo(Site site) {
+    final main = site.mainTarget;
     // The list shows the errors; mark them as handled so a site that is not
     // reachable is not also reported as an uncaught error before that.
-    final systemInfo = services.fetchInfo(site.url)..ignore();
+    final systemInfo = services.fetchInfo(main.url)..ignore();
     final repoPath =
         site.repoPath.isEmpty ? null : RepoStatus.expandHome(site.repoPath);
 
-    // Environments win over the old global override. A legacy site without targets
-    // keeps the previous behaviour: the active server is its deploy target.
-    final targets = site.targets.isNotEmpty ? site.targets : site.environments;
+    // The target for the active server wins; otherwise the main environment is used.
     final activeTarget = _active == null
         ? null
-        : site.targets.isEmpty
-            ? null
-            : site.targets
-                .where((target) => target.server == _active!.name)
-                .firstOrNull;
-    final deployRemote = site.targets.isEmpty
-        ? (_active != null && site.deployRemote != Site.noDeploy
-            ? _active!.remote
-            : site.deployRemote)
-        : (activeTarget?.deployRemote ?? site.targets.first.deployRemote);
+        : site.targets
+            .where((target) => target.server == _active!.name)
+            .firstOrNull;
+    final deployRemote = activeTarget?.deployRemote ?? main.deployRemote;
 
     final info = SiteInfo(
-      url: site.url,
+      url: main.url,
       name: site.displayName,
       hasName: site.name.isNotEmpty,
       systemInfo: systemInfo,
@@ -518,9 +484,8 @@ class _MyHomePageState extends State<MyHomePage> {
       upstreamTime: site.devUrl.isEmpty || repoPath == null
           ? null
           : (services.upstreamTime(repoPath)..ignore()),
-      targets: targets,
+      targets: site.targets,
       site: site,
-      deployRemote: site.deployRemote,
     );
     info.repoStatus?.then((status) {
       final server = status.deployUrl == null
@@ -548,10 +513,21 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _addSite() async {
-    final site = await showSiteDialog(context,
-        listRemotes: services.listRemotes, pickFolder: services.pickFolder);
-    if (site == null || !mounted) return;
+    // First the project details, then its address: a site is not stored before it
+    // has at least one environment.
+    final details =
+        await showSiteDialog(context, pickFolder: services.pickFolder);
+    if (details == null || !mounted) return;
+    final targets = await showEnvironmentsDialog(context,
+        targets: const [], servers: servers);
+    if (targets == null || targets.isEmpty || !mounted) return;
 
+    final site = Site(
+      name: details.name,
+      repoPath: details.repoPath,
+      devUrl: details.devUrl,
+      targets: targets,
+    );
     setState(() {
       sites.add(site);
       siteInfos.add(_siteInfo(site));
@@ -560,12 +536,17 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _editSite(int index) async {
-    final site = await showSiteDialog(context,
-        site: sites[index],
-        listRemotes: services.listRemotes,
-        pickFolder: services.pickFolder);
-    if (site == null || !mounted) return;
+    final current = sites[index];
+    final details = await showSiteDialog(context,
+        site: current, pickFolder: services.pickFolder);
+    if (details == null || !mounted) return;
 
+    final site = Site(
+      name: details.name,
+      repoPath: details.repoPath,
+      devUrl: details.devUrl,
+      targets: current.targets,
+    );
     setState(() {
       sites[index] = site;
       siteInfos[index] = _siteInfo(site);
@@ -682,17 +663,22 @@ class _MyHomePageState extends State<MyHomePage> {
       ));
     }
 
-    if (repoPath != null) {
-      for (final server in kmyServers) {
-        if (matched.any((entry) => entry.key == server)) continue;
-        actions.add(SiteRowAction(
-          Icons.rocket_launch,
-          'Deploy to ${server.name}…',
-          () => _deployToServer(info, server, _targetForServer(info, server)),
-          place: SiteActionPlace.details,
-          filled: true,
-        ));
-      }
+    // Creating a site on a server is only offered for the selected one, and only
+    // while this project is not there yet. Other servers keep their own actions.
+    final selected = _active;
+    if (repoPath != null &&
+        selected != null &&
+        selected.isKMyServer &&
+        _health[selected.name] != null &&
+        !matched.any((entry) => entry.key == selected) &&
+        _targetForServer(info, selected) == null) {
+      actions.add(SiteRowAction(
+        Icons.rocket_launch,
+        'Deploy to ${selected.name}…',
+        () => _deployToServer(info, selected, null),
+        place: SiteActionPlace.details,
+        filled: true,
+      ));
     }
 
     actions.add(SiteRowAction(
@@ -715,7 +701,7 @@ class _MyHomePageState extends State<MyHomePage> {
       onSelected: (open) => _runOpenAction(context, open),
       itemBuilder: (context) => [
         _menuItem(Icons.public, 'Open in browser', () => _launchUrl(info.url)),
-        for (final target in info.targets)
+        for (final target in info.targets.skip(1))
           _menuItem(Icons.public, 'Open ${target.name} (${target.domain})',
               () => _launchUrl(target.url)),
         if (info.devUrl != null)

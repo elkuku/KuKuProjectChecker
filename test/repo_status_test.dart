@@ -5,6 +5,8 @@ import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/widgets/repo_status_text.dart';
 
+import 'helpers.dart';
+
 Future<void> git(String dir, List<String> args) async {
   final result = await Process.run('git', [
     '-C',
@@ -138,7 +140,8 @@ void main() {
     expect((await RepoStatus.check(repo, deployRemote: 'origin')).deployRemote,
         'origin');
 
-    final none = await RepoStatus.check(repo, deployRemote: Site.noDeploy);
+    final none =
+        await RepoStatus.check(repo, deployRemote: SiteTarget.noDeploy);
     expect(none.deployRemote, isNull);
     expect(none.isClean, isTrue);
     expect(describeRepoStatus(none), 'master · clean');
@@ -195,7 +198,7 @@ void main() {
 
     expect(named.displayName, 'Shop');
     expect(named.toJson()['name'], 'Shop');
-    expect(const Site(url: 'https://shop.example.com/').displayName,
+    expect(legacySite(url: 'https://shop.example.com/').displayName,
         'shop.example.com');
   });
 
@@ -204,26 +207,32 @@ void main() {
     final current =
         Site.fromJson({'url': 'https://b.example', 'repoPath': '~/repos/b'});
 
-    expect(old.url, 'https://a.example');
+    expect(old.mainTarget.url, 'https://a.example');
     expect(old.repoPath, '');
     expect(current.repoPath, '~/repos/b');
-    expect(current.toJson(),
-        {'name': '', 'url': 'https://b.example', 'repoPath': '~/repos/b'});
-    expect(current.deployRemote, Site.autoDeploy);
+    expect(current.toJson(), {
+      'name': '',
+      'repoPath': '~/repos/b',
+      'targets': [
+        {'name': 'b.example', 'server': '', 'url': 'https://b.example'}
+      ]
+    });
+    expect(current.mainTarget.deployRemote, SiteTarget.autoDeploy);
   });
 
-  test('saves a chosen deploy remote', () {
+  test('saves a chosen deploy remote in the environment', () {
     final site = Site.fromJson({
       'url': 'https://b.example',
       'repoPath': '~/repos/b',
       'deployRemote': 'production',
     });
 
-    expect(site.deployRemote, 'production');
-    expect(site.toJson()['deployRemote'], 'production');
-    expect(Site.fromJson(site.toJson()).deployRemote, 'production');
+    expect(site.mainTarget.deployRemote, 'production');
+    expect(site.toJson(), isNot(contains('deployRemote')));
+    expect(Site.fromJson(site.toJson()).mainTarget.deployRemote, 'production');
     expect(
-        const Site(url: 'https://b.example', deployRemote: Site.noDeploy)
+        legacySite(url: 'https://b.example', deployRemote: SiteTarget.noDeploy)
+            .mainTarget
             .toJson()['deployRemote'],
         '-');
   });

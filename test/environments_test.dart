@@ -156,7 +156,6 @@ void main() {
       );
       final site = Site(
         name: 'Shop',
-        url: 'https://shop.example.com',
         targets: const [pleskTarget, vmTarget],
       );
 
@@ -168,20 +167,23 @@ void main() {
       expect(restored.targets.last.domain, 'shop.vm1.localhost');
     });
 
-    test('a legacy site still has one environment', () {
-      const site = Site(
-        name: 'Shop',
-        url: 'https://shop.example.com',
-        deployRemote: 'production',
-      );
-      expect(site.targets, isEmpty);
-      expect(site.environments, [
+    test('old settings are migrated into the first environment', () {
+      final site = Site.fromJson({
+        'name': 'Shop',
+        'url': 'https://shop.example.com',
+        'deployRemote': 'production',
+      });
+      expect(site.targets, [
         const SiteTarget(
           name: 'Shop',
           url: 'https://shop.example.com',
           deployRemote: 'production',
         ),
       ]);
+      final json = site.toJson();
+      expect(json, isNot(contains('url')));
+      expect(json, isNot(contains('deployRemote')));
+      expect(Site.fromJson(json).targets, site.targets);
     });
 
     test('a server domain suffix is saved only when set', () {
@@ -196,7 +198,7 @@ void main() {
     testWidgets('Environments… adds a Plesk target and saves it',
         (tester) async {
       final settings = _MemorySettings([
-        const Site(name: 'Shop', url: 'https://shop.example.com'),
+        legacySite(name: 'Shop', url: 'https://shop.example.com'),
       ]);
       await tester.pumpWidget(MyApp(
         preferences: _Preferences([plesk, vm1], ''),
@@ -244,6 +246,65 @@ void main() {
       expect(find.text('Open plesk (shop.example.com)'), findsOneWidget);
     });
 
+    testWidgets('deploy-to is only offered for the selected server',
+        (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final settings = _MemorySettings([
+        legacySite(
+            name: 'Shop',
+            url: 'https://shop.example.com',
+            repoPath: '~/repos/shop'),
+      ]);
+      await tester.pumpWidget(MyApp(
+        preferences: _Preferences([vm1, vm2], 'VM 1'),
+        services: _services(settings, health: (server) async {
+          return ServerHealth.fromJson(
+              _health('test-${server.name}', 'shop.${server.domainSuffix}'));
+        }),
+      ));
+      await tester.pumpAndSettle();
+
+      await expandRow(tester, 'Shop');
+      expect(find.byTooltip('Deploy to VM 1…'), findsOneWidget);
+      expect(find.byTooltip('Deploy to VM 2…'), findsNothing);
+    });
+
+    testWidgets('no deploy-to when the site is on the selected server',
+        (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final settings = _MemorySettings([
+        Site(
+          name: 'Shop',
+          repoPath: '~/repos/shop',
+          targets: [
+            const SiteTarget(
+              name: 'vm1',
+              server: 'VM 1',
+              url: 'https://shop.vm1.localhost:8443',
+            ),
+          ],
+        ),
+      ]);
+      await tester.pumpWidget(MyApp(
+        preferences: _Preferences([vm1, vm2], 'VM 1'),
+        services: _services(settings, health: (server) async {
+          return ServerHealth.fromJson(
+              _health('test-${server.name}', 'shop.${server.domainSuffix}'));
+        }),
+      ));
+      await tester.pumpAndSettle();
+
+      await expandRow(tester, 'Shop');
+      expect(find.byTooltip('Deploy to VM 1…'), findsNothing);
+      expect(find.byTooltip('Deploy to VM 2…'), findsNothing);
+    });
+
     testWidgets('one project shows every server environment', (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1;
@@ -251,9 +312,8 @@ void main() {
 
       final fetched = <String>[];
       final settings = _MemorySettings([
-        const Site(
+        Site(
           name: 'Shop',
-          url: 'https://shop.vm1.localhost:8443',
           targets: [
             SiteTarget(
                 name: 'vm1',
@@ -291,7 +351,9 @@ void main() {
       expect(find.text('Deploy log on VM 2…'), findsOneWidget);
 
       await openOpenInMenu(tester, 'Shop');
-      expect(find.text('Open vm1 (shop.vm1.localhost)'), findsOneWidget);
+      // The first environment is the main address: Open in browser covers it.
+      expect(find.text('Open in browser'), findsOneWidget);
+      expect(find.text('Open vm1 (shop.vm1.localhost)'), findsNothing);
       expect(find.text('Open vm2 (shop.vm2.localhost)'), findsOneWidget);
     });
   });

@@ -14,7 +14,7 @@ import 'helpers.dart';
 class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
-        const Site(
+        legacySite(
             name: 'Shop', url: 'https://shop.example.com', repoPath: '/repo')
       ];
 }

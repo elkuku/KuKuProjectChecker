@@ -38,7 +38,7 @@ class RepoStatus {
       (deployRemote == null || undeployed == 0);
 
   /// Checks the repository at [repoPath]. [deployRemote] is the site's choice:
-  /// Site.autoDeploy (''), Site.noDeploy ('-') or the name of a remote.
+  /// SiteTarget.autoDeploy (''), SiteTarget.noDeploy ('-') or the name of a remote.
   static Future<RepoStatus> check(String repoPath,
       {String deployRemote = ''}) async {
     final path = expandHome(repoPath);

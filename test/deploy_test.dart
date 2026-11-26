@@ -12,6 +12,8 @@ import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 import 'package:kuku_project_checker/widgets/deploy_dialog.dart';
 
+import 'helpers.dart';
+
 Future<void> git(String dir, List<String> args) async {
   final result = await Process.run('git', [
     '-C',
@@ -32,7 +34,7 @@ Future<void> git(String dir, List<String> args) async {
 class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
-        const Site(
+        legacySite(
             name: 'Shop', url: 'https://shop.example.com', repoPath: '/repo')
       ];
 }
@@ -260,6 +262,30 @@ void main() {
       ));
       await tester.pumpAndSettle();
     }
+
+    testWidgets('a row click shows details, the changes button opens changes',
+        (tester) async {
+      await showSite(tester, _pending, width: 1000);
+
+      expect(find.textContaining('master'), findsNothing);
+      await tester.tap(find.text('Shop'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('master'), findsOneWidget);
+      expect(find.byTooltip('Hide details'), findsOneWidget);
+
+      await tester.tap(find.text('Shop'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('master'), findsNothing);
+
+      await tester.tap(find.byTooltip('Show the 3 uncommitted files'));
+      // The changes screen has a loading spinner, so settle() never finishes.
+      for (var frame = 0;
+          frame < 20 && find.text('Changes: Shop').evaluate().isEmpty;
+          frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Changes: Shop'), findsOneWidget);
+    });
 
     testWidgets('show compact change and deploy buttons', (tester) async {
       await showSite(tester, _pending);

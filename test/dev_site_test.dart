@@ -36,7 +36,7 @@ class _Light extends Preferences {
   Future<void> writeThemeMode(ThemeMode mode) async {}
 }
 
-const _shop = Site(
+final _shop = legacySite(
   name: 'Shop',
   url: 'https://shop.example.com',
   repoPath: '/repos/shop',
@@ -82,7 +82,7 @@ void main() {
     expect(_shop.toJson()['devUrl'], 'https://dev.shop.example.com');
     expect(
         Site.fromJson(_shop.toJson()).devUrl, 'https://dev.shop.example.com');
-    expect(const Site(url: 'https://a.example').toJson().containsKey('devUrl'),
+    expect(legacySite(url: 'https://a.example').toJson().containsKey('devUrl'),
         isFalse);
   });
 

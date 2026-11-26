@@ -23,20 +23,42 @@ import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
-const sites = [
-  Site(
+/// A sample project with one environment.
+Site sampleSite({
+  required String url,
+  String name = '',
+  String repoPath = '',
+  String deployRemote = '',
+  String devUrl = '',
+}) =>
+    Site(
+      name: name,
+      repoPath: repoPath,
+      devUrl: devUrl,
+      targets: [
+        SiteTarget(
+          name: name.isNotEmpty ? name : Uri.tryParse(url)?.host ?? '',
+          url: url,
+          deployRemote: deployRemote,
+        )
+      ],
+    );
+
+final sites = [
+  sampleSite(
       name: 'Shop',
       url: 'https://shop.example.com',
       repoPath: '~/repos/shop',
       devUrl: 'https://dev.shop.example.com'),
-  Site(name: 'Blog', url: 'https://blog.example.com', repoPath: '~/repos/blog'),
-  Site(url: 'https://docs.example.com'),
-  Site(
+  sampleSite(
+      name: 'Blog', url: 'https://blog.example.com', repoPath: '~/repos/blog'),
+  sampleSite(url: 'https://docs.example.com'),
+  sampleSite(
       name: 'Shop (local)',
       url: 'https://127.0.0.1:8000',
       repoPath: '~/repos/shop-dev'),
   // Matches the site in sampleHealth, so the server-side badges show in the screenshot.
-  Site(name: 'Starter', url: 'https://starter.localhost:8443'),
+  sampleSite(name: 'Starter', url: 'https://starter.localhost:8443'),
 ];
 
 final versions = {
@@ -361,7 +383,7 @@ void main() {
 
       screenshotTest('changes', (tester) async {
         await showApp(tester, mode);
-        await tester.tap(find.text('Shop'));
+        await tester.tap(find.byTooltip('Show the 3 uncommitted files'));
         await tester.pumpAndSettle();
         await snap('03_changes');
 

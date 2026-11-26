@@ -2,7 +2,7 @@
 
 Each project is one compact row with its name, its address, the buttons you need most and, when a
 KMyServer reports about it, its server badges. Versions and repository details are hidden until you
-expand the row; the server status always stays beside the list.
+click the row; the server status always stays beside the list.
 
 ![The site list](../screenshots/01_sites-dark.png){.theme-dark}
 ![The site list](../screenshots/01_sites-light.png){.theme-light}
@@ -10,7 +10,9 @@ expand the row; the server status always stays beside the list.
 ![Compact rows](../screenshots/09_compact_rows-dark.png){.theme-dark}
 ![Compact rows](../screenshots/09_compact_rows-light.png){.theme-light}
 
-Tap **Show details** (▾) to see the versions, the repository status and the rest of the actions:
+Click the row (or its ▾ button) to see the versions, the repository status and the rest of the
+actions. Click it again to hide them. The uncommitted changes are opened by their own button in the
+row; see [Uncommitted changes](./changes).
 
 ![Expanded row](../screenshots/10_expanded_row-dark.png){.theme-dark}
 ![Expanded row](../screenshots/10_expanded_row-light.png){.theme-light}
@@ -47,7 +49,9 @@ this machine. A badge that differs turns **orange** with ⇄; hover over it to s
 
 The Symfony project doesn't have to be at the top of the repository: if the repository has no
 `composer.json`, the app uses the first folder directly inside it that has one, e.g. `web/` in a
-repository that also holds an Android app. The compose files are read from both places.
+repository that also holds an Android app. The compose files are read from both places. If there is
+no compose database image but `.env` or `.env.local` contains a `DATABASE_URL`, the platform is
+recognized from its scheme (without a version). No credential value is stored in the app.
 
 ## Repository status
 
@@ -63,14 +67,16 @@ The line at the bottom shows the branch of the local repository and what is pend
 | `no upstream` | The branch doesn't track a remote branch. |
 | `not on production` | The branch was never pushed to the deploy remote. |
 
-The **deploy remote** is the one chosen for the site in its **Edit…** dialog; on **Automatic**,
-the first remote that is not `origin`, not an HTTP(S) address and not on a code host like GitHub,
-e.g. a Plesk or Dokku git remote. See [Deploying](./deploy).
+The **deploy remote** comes from the project's [environment](./settings#environments) for the
+selected server (or the first environment). Blank uses the automatic choice: the first remote that
+is not `origin`, not an HTTP(S) address and not on a code host like GitHub, e.g. a Plesk or Dokku
+git remote. See [Deploying](./deploy).
 
 ## Each project
 
 - **⋮⋮** on the left: drag the project to another place in the list.
-- **▾ / ▴**: show or hide the details (versions, repository status and the remaining actions).
+- **Click the row** or **▾ / ▴**: show or hide the details (versions, repository status and the
+  remaining actions).
 - **✏️ Edit…** and **▤ Environments…**: manage the project and its environments
   ([Managing sites](./settings), [Servers](./servers)).
 - **▾ Open in…**: only open actions — the site or repository in the browser and other apps,

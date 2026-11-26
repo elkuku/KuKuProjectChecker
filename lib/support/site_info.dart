@@ -37,9 +37,6 @@ class SiteInfo {
   /// The setting this info was built from, so edits can write targets back.
   final Site? site;
 
-  /// The legacy deploy choice, used when there are no explicit environments.
-  final String deployRemote;
-
   const SiteInfo({
     required this.url,
     required this.name,
@@ -53,7 +50,6 @@ class SiteInfo {
     this.upstreamTime,
     this.targets = const [],
     this.site,
-    this.deployRemote = '',
   });
 
   /// The target for [server] (a [Server.name]), or null if this project has none there.

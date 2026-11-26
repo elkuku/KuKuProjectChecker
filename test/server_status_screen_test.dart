@@ -6,6 +6,7 @@ import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/screens/server_status_screen.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/deployer.dart' show RunFunction;
+import 'package:kuku_project_checker/support/local_versions.dart';
 import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/server.dart';
@@ -131,14 +132,14 @@ class _NoSites extends Settings {
 class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
-        const Site(url: 'https://starter.localhost:8443'),
+        legacySite(url: 'https://starter.localhost:8443'),
       ];
 }
 
 class _OneRepo extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
-        const Site(
+        legacySite(
             name: 'Shop',
             url: 'https://shop.example.com',
             repoPath: '~/repos/shop'),
@@ -440,6 +441,232 @@ void main() {
     expect(pushes, [(RepoStatus.expandHome('~/repos/shop'), 'vm', 'master')]);
 
     // The deploy dialog reports the push first; closing it finishes this flow.
+    await tester.tap(find.widgetWithText(FilledButton, 'Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('shop is live on Test VM'), findsOneWidget);
+  });
+
+  testWidgets('a detected database is created and a backup is imported',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final calls = <List<String>>[];
+    final pushes = <(String, String, String)>[];
+    final health = _json(healthy: true)..['sites'] = [];
+
+    await tester.pumpWidget(MyApp(
+      preferences: _Preferences(),
+      services: AppServices(
+        settings: _OneRepo(),
+        fetchInfo: (_) async =>
+            const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+        checkRepo: (_, __) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0),
+        readLocal: (_) async => const LocalVersions(dbPlatform: 'postgresql'),
+        openInTargets: const [],
+        listRemotes: (_) async => [
+          ('origin', 'https://github.com/elkuku/shop.git'),
+        ],
+        fetchServerHealth: (_) async => ServerHealth.fromJson(health),
+        run: (_, arguments, onOutput, {workingDirectory}) async {
+          calls.add(arguments);
+          if (arguments.any((arg) => arg.contains('site-db-backups'))) {
+            onOutput(
+              '{"sets":[{"date":"2026-11-26","dumps":["pg-old-shop.dump"]}]}',
+            );
+          } else {
+            onOutput('remote: ok');
+          }
+          return 0;
+        },
+        push: (repoPath, remote, branch, onOutput) async {
+          pushes.add((repoPath, remote, branch));
+          onOutput('remote: ok');
+          return 0;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tapRowButton(tester, 'Shop', 'Deploy to Test VM…', expand: true);
+
+    expect(find.text('Create PostgreSQL database'), findsOneWidget);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    expect(find.text('2026-11-26 · pg-old-shop.dump'), findsOneWidget);
+    expect(find.textContaining('--db postgresql'), findsOneWidget);
+    expect(
+      find.textContaining('/usr/local/sbin/site-db-import'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Create and deploy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+    await tester.pumpAndSettle();
+
+    expect(calls[0], [
+      '-p',
+      '2222',
+      'root@localhost',
+      '/usr/local/sbin/site-db-backups',
+      'list',
+    ]);
+    expect(calls[1], [
+      '-p',
+      '2222',
+      'root@localhost',
+      '/usr/local/sbin/site-add',
+      'shop',
+      '--domain',
+      'shop.example.com',
+      '--template',
+      'https://github.com/elkuku/shop.git',
+      '--db',
+      'postgresql',
+    ]);
+    expect(calls[3], [
+      '-p',
+      '2222',
+      'root@localhost',
+      '/usr/local/sbin/site-db-import',
+      'shop',
+      '/var/backups/server/db/2026-11-26/pg-old-shop.dump',
+    ]);
+    expect(pushes, [(RepoStatus.expandHome('~/repos/shop'), 'vm', 'master')]);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('shop is live on Test VM'), findsOneWidget);
+  });
+
+  testWidgets('a failed database import stops before the deploy',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final calls = <List<String>>[];
+    final pushes = <(String, String, String)>[];
+    final health = _json(healthy: true)..['sites'] = [];
+
+    await tester.pumpWidget(MyApp(
+      preferences: _Preferences(),
+      services: AppServices(
+        settings: _OneRepo(),
+        fetchInfo: (_) async =>
+            const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+        checkRepo: (_, __) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0),
+        readLocal: (_) async => const LocalVersions(dbPlatform: 'postgresql'),
+        openInTargets: const [],
+        listRemotes: (_) async => [
+          ('origin', 'https://github.com/elkuku/shop.git'),
+        ],
+        fetchServerHealth: (_) async => ServerHealth.fromJson(health),
+        run: (_, arguments, onOutput, {workingDirectory}) async {
+          calls.add(arguments);
+          if (arguments.any((arg) => arg.contains('site-db-backups'))) {
+            onOutput(
+              '{"sets":[{"date":"2026-11-26","dumps":["pg-old-shop.dump"]}]}',
+            );
+            return 0;
+          }
+          if (arguments.any((arg) => arg.contains('site-db-import'))) {
+            onOutput('site-db-import: dump is not readable');
+            return 1;
+          }
+          onOutput('remote: ok');
+          return 0;
+        },
+        push: (repoPath, remote, branch, onOutput) async {
+          pushes.add((repoPath, remote, branch));
+          return 0;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tapRowButton(tester, 'Shop', 'Deploy to Test VM…', expand: true);
+    await tester.tap(find.text('Create and deploy'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Importing the database backup failed'),
+      findsOneWidget,
+    );
+    expect(find.text('Deploy Shop?'), findsNothing);
+    expect(pushes, isEmpty);
+    expect(
+      calls.last.any((arg) => arg.contains('site-db-import')),
+      isTrue,
+    );
+  });
+
+  testWidgets('the detected database option can be turned off', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final calls = <List<String>>[];
+    final health = _json(healthy: true)..['sites'] = [];
+
+    await tester.pumpWidget(MyApp(
+      preferences: _Preferences(),
+      services: AppServices(
+        settings: _OneRepo(),
+        fetchInfo: (_) async =>
+            const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
+        checkRepo: (_, __) async =>
+            const RepoStatus(branch: 'master', uncommitted: 0),
+        readLocal: (_) async => const LocalVersions(dbPlatform: 'postgresql'),
+        openInTargets: const [],
+        listRemotes: (_) async => [
+          ('origin', 'https://github.com/elkuku/shop.git'),
+        ],
+        fetchServerHealth: (_) async => ServerHealth.fromJson(health),
+        run: (_, arguments, onOutput, {workingDirectory}) async {
+          calls.add(arguments);
+          if (arguments.any((arg) => arg.contains('site-db-backups'))) {
+            onOutput(
+              '{"sets":[{"date":"2026-11-26","dumps":["pg-old-shop.dump"]}]}',
+            );
+          } else {
+            onOutput('remote: ok');
+          }
+          return 0;
+        },
+        push: (_, __, ___, onOutput) async {
+          onOutput('remote: ok');
+          return 0;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tapRowButton(tester, 'Shop', 'Deploy to Test VM…', expand: true);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    expect(find.text('Import a backup'), findsNothing);
+
+    await tester.tap(find.text('Create and deploy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Deploy'));
+    await tester.pumpAndSettle();
+
+    final siteAdd = calls.firstWhere(
+        (call) => call.any((arg) => arg.contains('site-add')),
+        orElse: () => []);
+    expect(siteAdd, isNotEmpty);
+    expect(siteAdd, isNot(contains('--db')));
+    expect(
+      calls.any((call) => call.any((arg) => arg.contains('site-db-import'))),
+      isFalse,
+    );
+
     await tester.tap(find.widgetWithText(FilledButton, 'Close'));
     await tester.pumpAndSettle();
     expect(find.text('shop is live on Test VM'), findsOneWidget);

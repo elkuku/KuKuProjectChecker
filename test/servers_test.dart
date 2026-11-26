@@ -13,6 +13,8 @@ import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_creator.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
+import 'helpers.dart';
+
 const _plesk = Server(name: 'Plesk', remote: 'elkuku.dev');
 const _vm = Server(
     name: 'Test VM',
@@ -167,13 +169,13 @@ void main() {
 
   group('switching the server', () {
     Future<List<String>> showApp(WidgetTester tester, _Memory preferences,
-        {String siteRemote = Site.autoDeploy}) async {
+        {String siteRemote = SiteTarget.autoDeploy}) async {
       final checked = <String>[];
       await tester.pumpWidget(MyApp(
         preferences: preferences,
         services: AppServices(
           settings: _Sites([
-            Site(
+            legacySite(
                 name: 'Shop',
                 url: 'https://shop.example.com',
                 repoPath: '/repo',
@@ -194,33 +196,34 @@ void main() {
       return checked;
     }
 
-    testWidgets('makes every site deploy to the active server', (tester) async {
+    testWidgets('uses the project environment remote on every server',
+        (tester) async {
       final preferences = _Memory([_plesk, _vm], 'Test VM');
       final checked = await showApp(tester, preferences);
 
-      expect(checked.last, 'vm');
+      expect(checked.last, SiteTarget.autoDeploy);
       expect(find.text('Test VM'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Switch the server the sites deploy to'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Plesk  (remote elkuku.dev)'));
       await tester.pumpAndSettle();
-      expect(checked.last, 'elkuku.dev');
+      expect(checked.last, SiteTarget.autoDeploy);
       expect(preferences.active, 'Plesk');
 
       await tester.tap(find.byTooltip('Switch the server the sites deploy to'));
       await tester.pumpAndSettle();
       await tester.tap(find.text("Each site's own deploy remote"));
       await tester.pumpAndSettle();
-      expect(checked.last, Site.autoDeploy);
+      expect(checked.last, SiteTarget.autoDeploy);
       expect(preferences.active, '');
     });
 
     testWidgets('leaves sites alone that never deploy', (tester) async {
       final checked = await showApp(tester, _Memory([_vm], 'Test VM'),
-          siteRemote: Site.noDeploy);
+          siteRemote: SiteTarget.noDeploy);
 
-      expect(checked.last, Site.noDeploy);
+      expect(checked.last, SiteTarget.noDeploy);
     });
 
     testWidgets('servers can be added in the app', (tester) async {
@@ -358,7 +361,8 @@ void main() {
       await tester.tap(find.text('Add to the list'));
       await tester.pumpAndSettle();
 
-      expect(sites.single.url, 'https://shop.localhost:8443');
+      expect(sites.single.mainTarget.url, 'https://shop.localhost:8443');
+      expect(sites.single.mainTarget.server, 'Test VM');
       expect(sites.single.repoPath, endsWith('/repos/shop'));
     });
   });
