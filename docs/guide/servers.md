@@ -28,6 +28,21 @@ The switch in the app bar says where the sites deploy:
 **Roll back…** follows the switch: it is offered when the active deploy remote is a KMyServer
 site repository.
 
+## Server status and actions
+
+The same server switch opens **Server status…**: a health report plus the actions the server
+scripts already support. The page never runs a free-form command — every button sends a fixed
+argument list over SSH, shows the command, streams the output and shows the exit code. A non-zero
+exit is always visible.
+
+- **Server:** refresh the report, run a backup, send a test mail, or open the **New site…** wizard.
+- **Each site:** deploy (the same git-push dialog as the site card), roll back, list releases,
+  view the deploy / app / PHP / Caddy log, or remove the site.
+
+**Remove site** first shows a dry run that changes nothing. To go on you must type the site name;
+dropping the database also needs a second confirmation. The final backup is made by the server
+before anything is removed.
+
 ## New site from a template
 
 The ➕ button with the box (**New site from a template**) creates a complete site on a KMyServer

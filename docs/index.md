@@ -31,7 +31,7 @@ features:
     details: Pushes the new commits to the deploy remote, e.g. Plesk, after showing what the push includes.
   - icon: 🖥️
     title: Server status
-    details: Reads a KMyServer health report: services, disk, backups, mail and each site's release, certificate and errors.
+    details: Reads a KMyServer health report and runs allowlisted actions: backup, test mail, roll back, release list and site logs — with confirmations and streamed output.
   - icon: 🧭
     title: Open in …
     details: Opens a project in the browser, the file manager, a terminal, PhpStorm, VS Code, Kate or gitk.

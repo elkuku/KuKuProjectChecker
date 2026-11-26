@@ -10,6 +10,7 @@ import 'support/site.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
 import 'screens/server_status_screen.dart';
+import 'support/server_health.dart' show SiteHealth;
 import 'widgets/deploy_dialog.dart';
 import 'widgets/new_site_dialog.dart';
 import 'widgets/rollback_dialog.dart';
@@ -200,8 +201,35 @@ class _MyHomePageState extends State<MyHomePage> {
       builder: (_) => ServerStatusScreen(
         server: server,
         fetch: services.fetchServerHealth,
+        run: services.run,
+        onDeploy: _deployFromServerStatus,
+        onNewSite: _newSite,
       ),
     ));
+  }
+
+  /// The status page's Deploy button uses the same dialog as the site card: a git push from
+  /// the local repository. Only sites that are in the app's settings can be deployed here.
+  Future<bool> _deployFromServerStatus(SiteHealth site) async {
+    final index = siteInfos.indexWhere((info) =>
+        info.name == site.name || Uri.tryParse(info.url)?.host == site.domain);
+    if (index < 0 || siteInfos[index].repoPath == null) {
+      _showMessage('No local repository is set for ${site.domain}');
+      return false;
+    }
+
+    final repoPath = siteInfos[index].repoPath!;
+    final status = await services.checkRepo(repoPath, sites[index].deployRemote);
+    if (!mounted) return false;
+    final pushed = await showDeployDialog(
+      context,
+      siteName: siteInfos[index].name,
+      repoPath: repoPath,
+      status: status,
+      push: services.push,
+    );
+    if (pushed && mounted) loadInfos();
+    return pushed;
   }
 
   Future<void> _newSite() async {

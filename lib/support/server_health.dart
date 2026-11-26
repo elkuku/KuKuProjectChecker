@@ -228,6 +228,8 @@ class MailHealth {
 }
 
 class SiteHealth {
+  /// The site user / folder name; older reports only had the domain, so fall back to its label.
+  final String name;
   final String domain;
   final int http;
   final int? certificateDays;
@@ -240,6 +242,7 @@ class SiteHealth {
   final List<String> problems;
 
   const SiteHealth({
+    required this.name,
     required this.domain,
     required this.http,
     required this.certificateDays,
@@ -255,8 +258,11 @@ class SiteHealth {
   factory SiteHealth.fromJson(Map<String, dynamic> json) {
     final cert = _map(json['certificate']);
     final last = _string(json['lastCritical']);
+    final domain = _string(json['domain']);
+    final name = _string(json['name']);
     return SiteHealth(
-      domain: _string(json['domain']),
+      name: name.isEmpty ? domain.split('.').first : name,
+      domain: domain,
       http: _int(json['http']),
       certificateDays: _intOrNull(cert['days']),
       issuer: _string(cert['issuer']),

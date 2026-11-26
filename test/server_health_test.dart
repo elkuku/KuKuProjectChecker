@@ -59,6 +59,7 @@ Map<String, dynamic> _report({bool healthy = false}) => {
       },
       'sites': [
         {
+          'name': 'starter',
           'domain': 'starter.localhost',
           'http': healthy ? 200 : 0,
           'certificate': {'days': healthy ? 0 : null, 'issuer': 'Caddy Local Authority'},

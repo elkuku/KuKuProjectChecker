@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/screens/server_status_screen.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
+import 'package:kuku_project_checker/support/deployer.dart' show RunFunction;
 import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/server.dart';
@@ -65,6 +66,7 @@ Map<String, dynamic> _json({bool healthy = false}) => {
       },
       'sites': [
         {
+          'name': 'starter',
           'domain': 'starter.localhost',
           'http': healthy ? 200 : 0,
           'certificate': {'days': 0, 'issuer': 'Caddy Local Authority'},
@@ -82,14 +84,23 @@ Map<String, dynamic> _json({bool healthy = false}) => {
     };
 
 Future<void> showScreen(WidgetTester tester,
-        {required FetchServerHealth fetch}) async {
+        {required FetchServerHealth fetch,
+        RunFunction? run,
+        DeploySiteFromServer? onDeploy,
+        NewSiteFromServer? onNewSite}) async {
   // The report is a lazy ListView; a tall test window keeps every section mounted.
   tester.view.physicalSize = const Size(1200, 2600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(MaterialApp(
-    home: ServerStatusScreen(server: vm, fetch: fetch),
+    home: ServerStatusScreen(
+      server: vm,
+      fetch: fetch,
+      run: run ?? (_, __, ___, {workingDirectory}) async => 0,
+      onDeploy: onDeploy,
+      onNewSite: onNewSite,
+    ),
   ));
   await tester.pumpAndSettle();
 }
@@ -143,6 +154,51 @@ void main() {
       expect(find.text('starter.localhost: http 000'), findsOneWidget);
       expect(find.text('starter.localhost: last deploy failed'), findsOneWidget);
       expect(find.textContaining('Database connection failed'), findsOneWidget);
+    });
+
+    testWidgets('runs an allowlisted action through the injected runner',
+        (tester) async {
+      final calls = <List<String>>[];
+      await showScreen(
+        tester,
+        fetch: (_) async => ServerHealth.fromJson(_json(healthy: true)),
+        run: (_, arguments, onOutput, {workingDirectory}) async {
+          calls.add(arguments);
+          onOutput('backup ok');
+          return 0;
+        },
+      );
+
+      await tester.tap(find.text('Run backup'));
+      await tester.pumpAndSettle();
+      final confirm = find.descendant(
+          of: find.byType(AlertDialog), matching: find.text('Run backup'));
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+
+      expect(calls, [
+        [
+          '-p',
+          '2222',
+          'root@localhost',
+          '/usr/local/sbin/server-backup',
+          'run'
+        ]
+      ]);
+      expect(find.text('backup ok'), findsOneWidget);
+      expect(find.text('Run backup finished'), findsOneWidget);
+    });
+
+    testWidgets('links to the existing new-site wizard', (tester) async {
+      var opened = 0;
+      await showScreen(
+        tester,
+        fetch: (_) async => ServerHealth.fromJson(_json(healthy: true)),
+        onNewSite: () async => opened++,
+      );
+
+      await tester.tap(find.text('New site…'));
+      expect(opened, 1);
     });
 
     testWidgets('reports an SSH error and can retry', (tester) async {

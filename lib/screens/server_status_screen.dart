@@ -1,17 +1,38 @@
 import 'package:flutter/material.dart';
 
+import '../support/deployer.dart' show RunFunction;
 import '../support/server.dart';
+import '../support/server_actions.dart';
 import '../support/server_api.dart';
 import '../support/server_health.dart';
+import '../widgets/server_action_dialog.dart';
 import 'changes_screen.dart' show monoTextStyle;
 
-/// The read-only report of one KMyServer server. It only runs `server-health --json`.
+typedef RunServerAction = Future<bool> Function(
+    ServerAction action, SiteHealth? site);
+typedef DeploySiteFromServer = Future<bool> Function(SiteHealth site);
+typedef NewSiteFromServer = Future<void> Function();
+
+/// One KMyServer server: a read-only report plus the allowlisted actions in [ServerAction].
 class ServerStatusScreen extends StatefulWidget {
   final Server server;
   final FetchServerHealth fetch;
+  final RunFunction run;
 
-  const ServerStatusScreen(
-      {super.key, required this.server, required this.fetch});
+  /// The existing site-card deploy, so deploys are still a git push from the local repository.
+  final DeploySiteFromServer? onDeploy;
+
+  /// The existing new-site wizard, linked here so site creation stays in one place.
+  final NewSiteFromServer? onNewSite;
+
+  const ServerStatusScreen({
+    super.key,
+    required this.server,
+    required this.fetch,
+    required this.run,
+    this.onDeploy,
+    this.onNewSite,
+  });
 
   @override
   State<ServerStatusScreen> createState() => _ServerStatusScreenState();
@@ -24,6 +45,27 @@ class _ServerStatusScreenState extends State<ServerStatusScreen> {
     setState(() {
       report = widget.fetch(widget.server);
     });
+  }
+
+  Future<bool> _runAction(ServerAction action, SiteHealth? site) async {
+    final done = await showServerActionDialog(
+      context,
+      action: action,
+      server: widget.server,
+      siteName: site?.name ?? '',
+      run: widget.run,
+    );
+    // Reading a log does not change the report; don't run a second health check for it.
+    if (done && mounted && action.risk != ServerActionRisk.read) _reload();
+    return done;
+  }
+
+  Future<bool> _deploy(SiteHealth site) async {
+    final deploy = widget.onDeploy;
+    if (deploy == null) return false;
+    final done = await deploy(site);
+    if (done && mounted) _reload();
+    return done;
   }
 
   @override
@@ -74,7 +116,12 @@ class _ServerStatusScreenState extends State<ServerStatusScreen> {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          return _ReportView(report: snapshot.data!);
+          return _ReportView(
+            report: snapshot.data!,
+            onAction: _runAction,
+            onDeploy: _deploy,
+            onNewSite: widget.onNewSite,
+          );
         },
       ),
     );
@@ -83,8 +130,16 @@ class _ServerStatusScreenState extends State<ServerStatusScreen> {
 
 class _ReportView extends StatelessWidget {
   final ServerHealth report;
+  final RunServerAction onAction;
+  final DeploySiteFromServer onDeploy;
+  final NewSiteFromServer? onNewSite;
 
-  const _ReportView({required this.report});
+  const _ReportView({
+    required this.report,
+    required this.onAction,
+    required this.onDeploy,
+    this.onNewSite,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +159,12 @@ class _ReportView extends StatelessWidget {
                   ok: true, label: 'Everything looks OK', value: ''),
             for (final warning in warnings)
               _StatusLine(ok: false, label: warning, value: ''),
+            const SizedBox(height: 4),
+            _Actions(
+              actions: ServerAction.serverActions,
+              onAction: onAction,
+              onNewSite: onNewSite,
+            ),
           ],
         ),
         _Section(
@@ -203,9 +264,101 @@ class _ReportView extends StatelessWidget {
           title: 'Sites (${report.sites.length})',
           children: [
             if (report.sites.isEmpty) const Text('No sites on this server.'),
-            for (final site in report.sites) _SiteTile(site: site),
+            for (final site in report.sites)
+              _SiteTile(site: site, onAction: onAction, onDeploy: onDeploy),
           ],
         ),
+      ],
+    );
+  }
+}
+
+IconData _icon(ServerAction action) => switch (action.id) {
+      'backup' => Icons.backup,
+      'mailTest' => Icons.mail_outline,
+      'releases' => Icons.list_alt,
+      'rollback' => Icons.history,
+      'remove' => Icons.delete_outline,
+      _ => Icons.article_outlined,
+    };
+
+class _Actions extends StatelessWidget {
+  final List<ServerAction> actions;
+  final RunServerAction onAction;
+  final SiteHealth? site;
+  final DeploySiteFromServer? onDeploy;
+  final NewSiteFromServer? onNewSite;
+
+  const _Actions({
+    required this.actions,
+    required this.onAction,
+    this.site,
+    this.onDeploy,
+    this.onNewSite,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final logs = actions.where((action) =>
+        ServerAction.logActions.any((log) => log.id == action.id)).toList();
+    final plain = actions.where((action) => !logs.contains(action)).toList();
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 2,
+      children: [
+        if (site != null && onDeploy != null)
+          OutlinedButton.icon(
+            onPressed: () => onDeploy!(site!),
+            icon: const Icon(Icons.rocket_launch, size: 17),
+            label: const Text('Deploy…'),
+          ),
+        for (final action in plain)
+          OutlinedButton.icon(
+            onPressed: () => onAction(action, site),
+            icon: Icon(_icon(action), size: 17),
+            label: Text(action.label),
+            style: action.risk == ServerActionRisk.destructive
+                ? OutlinedButton.styleFrom(foregroundColor: colors.error)
+                : null,
+          ),
+        if (onNewSite != null)
+          OutlinedButton.icon(
+            onPressed: () => onNewSite!(),
+            icon: const Icon(Icons.add, size: 17),
+            label: const Text('New site…'),
+          ),
+        if (logs.isNotEmpty)
+          PopupMenuButton<ServerAction>(
+            tooltip: 'View a log',
+            onSelected: (action) => onAction(action, site),
+            itemBuilder: (context) => [
+              for (final action in logs)
+                PopupMenuItem(
+                  value: action,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_icon(action), size: 18),
+                      const SizedBox(width: 10),
+                      Text(action.label),
+                    ],
+                  ),
+                ),
+            ],
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.article_outlined, size: 17),
+                  SizedBox(width: 6),
+                  Text('Logs…'),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -312,8 +465,14 @@ class _StatusLine extends StatelessWidget {
 
 class _SiteTile extends StatelessWidget {
   final SiteHealth site;
+  final RunServerAction onAction;
+  final DeploySiteFromServer onDeploy;
 
-  const _SiteTile({required this.site});
+  const _SiteTile({
+    required this.site,
+    required this.onAction,
+    required this.onDeploy,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -343,6 +502,13 @@ class _SiteTile extends StatelessWidget {
           else
             for (final problem in site.problems)
               _StatusLine(ok: false, label: problem, value: ''),
+          const SizedBox(height: 8),
+          _Actions(
+            actions: ServerAction.siteActions,
+            onAction: onAction,
+            site: site,
+            onDeploy: onDeploy,
+          ),
         ],
       ),
     );

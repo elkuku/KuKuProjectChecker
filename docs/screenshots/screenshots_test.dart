@@ -128,6 +128,7 @@ final sampleHealth = ServerHealth.fromJson({
   'mail': {'configured': true, 'ok': false, 'last': ''},
   'sites': [
     {
+      'name': 'starter',
       'domain': 'starter.localhost',
       'http': 200,
       'certificate': {'days': 0, 'issuer': 'Caddy Local Authority'},
