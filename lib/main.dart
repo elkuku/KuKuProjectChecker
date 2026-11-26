@@ -9,6 +9,7 @@ import 'support/server.dart';
 import 'support/site.dart';
 import 'support/site_info.dart';
 import 'screens/changes_screen.dart';
+import 'screens/server_status_screen.dart';
 import 'widgets/deploy_dialog.dart';
 import 'widgets/new_site_dialog.dart';
 import 'widgets/rollback_dialog.dart';
@@ -177,6 +178,30 @@ class _MyHomePageState extends State<MyHomePage> {
     });
     await _saveServers();
     loadInfos();
+  }
+
+  /// Opens the read-only status report of the active (or only) KMyServer server.
+  Future<void> _showServerStatus() async {
+    final candidates = servers.where((server) => server.isKMyServer).toList();
+    final server = _active?.isKMyServer == true
+        ? _active
+        : candidates.length == 1
+            ? candidates.single
+            : null;
+
+    if (server == null) {
+      _showMessage(candidates.isEmpty
+          ? 'Add a KMyServer server first (Servers…, with its SSH host)'
+          : 'Choose a KMyServer server in the app bar first');
+      return;
+    }
+
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ServerStatusScreen(
+        server: server,
+        fetch: services.fetchServerHealth,
+      ),
+    ));
   }
 
   Future<void> _newSite() async {
@@ -429,12 +454,32 @@ class _MyHomePageState extends State<MyHomePage> {
   /// The active server: where all sites deploy, or each site's own remote.
   Widget _serverMenu() {
     const manage = '\u0000manage';
+    const status = '\u0000status';
 
     return PopupMenuButton<String>(
       tooltip: 'Switch the server the sites deploy to',
-      onSelected: (value) =>
-          value == manage ? _manageServers() : _switchServer(value),
+      onSelected: (value) {
+        if (value == manage) {
+          _manageServers();
+        } else if (value == status) {
+          _showServerStatus();
+        } else {
+          _switchServer(value);
+        }
+      },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: status,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.monitor_heart_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('Server status…'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
         CheckedPopupMenuItem(
           value: '',
           checked: activeServer.isEmpty,

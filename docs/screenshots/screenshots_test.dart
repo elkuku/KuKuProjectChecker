@@ -17,6 +17,8 @@ import 'package:kuku_project_checker/support/open_in.dart';
 import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_changes.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
+import 'package:kuku_project_checker/support/server.dart';
+import 'package:kuku_project_checker/support/server_health.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
@@ -68,6 +70,77 @@ final statuses = {
       const RepoStatus(branch: 'feature/checkout', uncommitted: 1),
 };
 
+const sampleServers = [
+  Server(
+      name: 'Test VM',
+      remote: 'vm',
+      sshHost: 'localhost',
+      sshPort: 2222,
+      sitePort: 8443),
+];
+
+final sampleHealth = ServerHealth.fromJson({
+  'schema': 1,
+  'generatedAt': '2026-11-26T09:00:00Z',
+  'host': 'test-vm',
+  'problems': 1,
+  'system': {
+    'os': 'Debian 13.8, kernel 6.12.57+deb13-amd64',
+    'kernel': '6.12.57+deb13-amd64',
+    'uptime': ' 09:00:00 up  1:42,  1 user,  load average: 0.12, 0.08, 0.03',
+    'rebootRequired': false,
+    'rebootPackages': [],
+  },
+  'services': [
+    {'name': 'caddy', 'state': 'active', 'ok': true},
+    {'name': 'php8.5-fpm', 'state': 'active', 'ok': true},
+    {'name': 'postgresql', 'state': 'active', 'ok': true},
+    {'name': 'nftables', 'state': 'active', 'ok': true},
+    {'name': 'fail2ban', 'state': 'active', 'ok': true},
+    {'name': 'ssh', 'state': 'active', 'ok': true},
+    {'name': 'server-backup.timer', 'state': 'active', 'ok': true},
+    {'name': 'unattended-upgrades', 'state': 'active', 'ok': true},
+  ],
+  'failedUnits': [],
+  'disk': [
+    {
+      'mount': '/',
+      'size': '80G',
+      'used': '12G',
+      'available': '68G',
+      'percent': 15,
+    },
+  ],
+  'memory': {'total': '2.0Gi', 'used': '380Mi'},
+  'updates': {'pending': 0, 'lastUnattended': '2026-11-26 06:12'},
+  'security': {
+    'bannedNow': 0,
+    'bannedTotal': 7,
+    'listening': [22, 80, 443],
+    'firewall': [22, 80, 443],
+  },
+  'backup': {
+    'ok': true,
+    'lastOk': '2026-11-26 02:30',
+    'ageHours': 7,
+    'sets': 14,
+  },
+  'mail': {'configured': true, 'ok': false, 'last': ''},
+  'sites': [
+    {
+      'domain': 'starter.localhost',
+      'http': 200,
+      'certificate': {'days': 0, 'issuer': 'Caddy Local Authority'},
+      'release': '20261125-1412',
+      'revision': '33abb4d',
+      'deploy': {'state': 'ok', 'when': '2026-11-25 14:12'},
+      'critical24h': 0,
+      'lastCritical': null,
+      'problems': [],
+    },
+  ],
+});
+
 class SampleSettings extends Settings {
   @override
   Future<List<Site>> readSettings() async => sites;
@@ -87,6 +160,10 @@ class SamplePreferences extends Preferences {
 
   @override
   Future<void> writeThemeMode(ThemeMode mode) async {}
+
+  @override
+  Future<(List<Server>, String)> readServers() async =>
+      (sampleServers, 'Test VM');
 }
 
 class SampleChanges extends RepoChanges {
@@ -133,6 +210,7 @@ index 3f2a9c1..8d41b0e 100644
 
 AppServices sampleServices() => AppServices(
       settings: SampleSettings(),
+      fetchServerHealth: (_) async => sampleHealth,
       fetchInfo: (url) async =>
           versions[url] ?? (throw const SocketException('Connection refused')),
       checkRepo: (path, _) async => statuses[path]!,
@@ -274,6 +352,18 @@ void main() {
         await tester.tap(find.text('Edit…'));
         await tester.pumpAndSettle();
         await snap('05_edit_site');
+      });
+
+      screenshotTest('server status', (tester) async {
+        await showApp(tester, mode);
+        tester.view.physicalSize = const Size(2000, 2200);
+        await tester.pumpAndSettle();
+        await tester.tap(
+            find.byTooltip('Switch the server the sites deploy to'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Server status…'));
+        await tester.pumpAndSettle();
+        await snap('08_server_status');
       });
     });
   }

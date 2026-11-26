@@ -29,6 +29,9 @@ features:
   - icon: 🚀
     title: Deploy with one click
     details: Pushes the new commits to the deploy remote, e.g. Plesk, after showing what the push includes.
+  - icon: 🖥️
+    title: Server status
+    details: Reads a KMyServer health report: services, disk, backups, mail and each site's release, certificate and errors.
   - icon: 🧭
     title: Open in …
     details: Opens a project in the browser, the file manager, a terminal, PhpStorm, VS Code, Kate or gitk.
@@ -40,5 +43,7 @@ features:
 ![The site list](./screenshots/01_sites-light.png){.theme-light}
 ![The diff of a file](./screenshots/04_diff-dark.png){.theme-dark}
 ![The diff of a file](./screenshots/04_diff-light.png){.theme-light}
+![The server status](./screenshots/08_server_status-dark.png){.theme-dark}
+![The server status](./screenshots/08_server_status-light.png){.theme-light}
 
 </div>

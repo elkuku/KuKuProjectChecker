@@ -10,6 +10,7 @@ import 'local_versions.dart';
 import 'open_in.dart';
 import 'repo_changes.dart';
 import 'repo_status.dart';
+import 'server_api.dart';
 import 'settings.dart';
 import 'site_info.dart';
 
@@ -37,6 +38,9 @@ class AppServices {
   /// Rolls a KMyServer site back to its previous release.
   final RollbackFunction rollback;
 
+  /// Reads a server's report; the status screen replaces this in tests.
+  final FetchServerHealth fetchServerHealth;
+
   /// Runs a command (ssh, git, gh) and streams its output; used to create sites.
   final RunFunction run;
 
@@ -63,6 +67,7 @@ class AppServices {
     Future<LocalVersions> Function(String repoPath)? readLocal,
     PushFunction? push,
     RollbackFunction? rollback,
+    FetchServerHealth? fetchServerHealth,
     RunFunction? run,
     Future<bool> Function(String path)? pathExists,
     List<(OpenInTarget, String)>? openInTargets,
@@ -78,6 +83,7 @@ class AppServices {
         readLocal = readLocal ?? LocalVersions.read,
         push = push ?? Deployer().push,
         rollback = rollback ?? Deployer().rollback,
+        fetchServerHealth = fetchServerHealth ?? ServerApi().health,
         run = run ?? runCommand,
         pathExists = pathExists ??
             ((path) async =>
