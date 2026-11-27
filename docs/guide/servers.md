@@ -10,11 +10,11 @@ server. Manage them with the server switch in the app bar → **Servers…**:
 - **Git remote** — the remote the sites use for this server, e.g. `kmyserver`.
 - **SSH host** and **Port** — only for KMyServer servers, to create sites from a template
   (e.g. `new.example.com`, or `localhost` and `2222` for the local test VM).
-- **HTTPS port of the sites** — if not 443, e.g. `8443` for the local test VM; new sites get
-  `https://<domain>:<port>` as their address.
-- **Domain suffix** — e.g. `localhost` or `kmy.example.com`: a new site on this server is suggested
-  as `<site name>.<domainSuffix>`. Leave it empty for servers where sites use their own domain
-  (local Symfony, Plesk).
+- **Server base URL** — the one address every project on this server builds on, e.g.
+  `https://vm.localhost:8443` for the test VM or `https://example.com` for Plesk. A project stores
+  only a subdomain on each [environment](./settings#environments); the app derives
+  `https://<subdomain>.<server host>` from it. Older settings with a domain suffix and site port keep
+  working; editing the server converts them into this one field.
 
 The servers are saved in `preferences.json`, next to the theme.
 
@@ -22,10 +22,14 @@ The servers are saved in `preferences.json`, next to the theme.
 
 The switch in the app bar picks the server whose status is shown beside the projects:
 
-- **Own remotes** — no server status pane; every project uses its own deploy remote.
-- **A KMyServer** — its health report appears beside the project list, and its sites are matched
-  to the projects. The active server's **Releases** and **Roll back** buttons stay in the compact
-  project rows.
+- **Own remotes** — no server status pane and no `/system/info/` requests: the project rows show only
+  git status and the versions read from the local repository. Every project uses its own deploy
+  remote.
+- **A server** — the versions of a project with an environment on that server are compared with the
+  address derived from the server's base URL and the project's subdomain. This works for a
+  non-KMyServer such as Plesk too. A KMyServer also shows its health report beside the project list,
+  matches its sites to the projects, and keeps the active server's **Releases** and **Roll back**
+  buttons in the compact project rows.
 
 A project's deploy remote comes from its [environments](./settings#environments): the target for
 the active server wins, otherwise the first target is used. A target with **`-`** as remote never
@@ -48,10 +52,11 @@ second site list in the status pane:
   is selected or the site is removed. Its buttons offer the same server actions.
 - When a KMyServer is selected, a project that is **not on that server yet** gets a
   **Deploy to `<server>`…** button in its expanded details. It is not shown for other servers or
-  for a project that already has an environment there. It asks which site name, domain and git
-  template to use (prefilled from the project, that server's domain suffix and its remotes), runs
-  `site-add` as root, adds the server remote locally and then uses the usual Deploy dialog to push
-  the branch. The chosen domain/name is saved back into the project's environment.
+  for a project that already has an environment there. It asks which site name, subdomain and git
+  template to use (prefilled from the project and its remotes), shows the address derived from that
+  server's base URL, runs `site-add` as root, adds the server remote locally and then uses the usual
+  Deploy dialog to push the branch. The chosen subdomain/name is saved back into the project's
+  environment.
 
   If the project's local compose files or `.env` show a database, **Create PostgreSQL database**
   is preselected; you can override it. The dialog then lists the server's dated backup sets
@@ -80,21 +85,23 @@ The single ＋ **Add site** button in the top bar opens one wizard with a switch
 registers a project you already have locally, **New on KMyServer** creates one on a server. The
 server pane's **New site…** opens the same wizard on the template step. Creating a new site means:
 
-1. **On the server** — `site-add <name> --domain <domain> --template <template>` runs as root over
-   SSH: user, database, PHP pool, Caddy site, and the template is deployed at once. Its steps show
-   in the log.
+1. **On the server** — `site-add <name> --domain <host> --template <template>` runs as root over
+   SSH: user, database, PHP pool, Caddy site, and the template is deployed at once. `<host>` is the
+   subdomain prefixed to this server's base URL host. Its steps show in the log.
 2. **Locally** — the site's repository is cloned into `<folder>/<name>`, with the server's remote
    name (e.g. `kmyserver`) instead of `origin`.
-3. **GitHub** (optional) — `gh repo create <name> --private|--public --source <folder>/<name> --remote origin --push`
+3. **GitHub** — `gh repo create <name> --private|--public --source <folder>/<name> --remote origin --push`
    makes a repository with the GitHub CLI and pushes the code there. **Private repository** is
-   checked by default (as before); uncheck it to create a public repository.
+   checked by default; uncheck it to create a public repository. The project's full GitHub URL is
+   entered in the wizard even when this step creates it.
 
-Then **Add to the list** adds the site with its address and local repository.
+Then **Add to the list** adds the site with its display name, local repository, GitHub URL and one
+environment on the server.
 
 - **Templates:** *Symfony starter* (github.com/elkuku/symfony-starter), or any public https git URL,
   optionally with a branch: `https://github.com/symfony/demo.git#main`.
-- **Site address:** follows the domain and the server's HTTPS port (`https://<domain>`, on the
-  test VM `https://<domain>:8443`); change it when the site is reached differently.
+- **Site address:** derived from the server's base URL and the subdomain, e.g.
+  `https://shop.localhost:8443` on the test VM; the helper text below the field shows it.
 - The local folder must not exist yet.
 
 ::: info Local certificates

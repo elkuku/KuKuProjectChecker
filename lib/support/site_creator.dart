@@ -1,5 +1,6 @@
 import 'deployer.dart' show RunFunction;
 import 'server.dart';
+import 'site.dart' show Site, SiteTarget;
 
 /// The templates KMyServer's site-add knows by name; other templates are public git URLs.
 const siteTemplates = {
@@ -12,10 +13,16 @@ class NewSite {
 
   /// The site's name on the server (its user, folder and database), and the folder name.
   final String name;
+
+  /// The project's label on [server]; the full address is derived from its base URL.
   final String domain;
 
-  /// Where the site is reached, e.g. https://`<domain>` (the test VM adds a port).
+  /// The full address derived from the server's base URL, passed to `site-add`.
   final String url;
+
+  /// Required project identity; [displayName] may differ from the server site name.
+  final String displayName;
+  final String githubRepo;
 
   /// A name from [siteTemplates] or a public https git URL (optionally `#branch`).
   final String template;
@@ -36,6 +43,8 @@ class NewSite {
     required this.url,
     required this.template,
     required this.parentDir,
+    this.displayName = '',
+    this.githubRepo = '',
     this.github = false,
     this.githubPrivate = true,
   });
@@ -47,11 +56,23 @@ class NewSite {
       ? null
       : '2–31 characters: lowercase letters, digits, "-"; starts with a letter';
 
+  /// A project only supplies a subdomain; the server supplies the rest of the address.
+  static String? subdomainError(String text) =>
+      SiteTarget.subdomainError(text);
+
+  /// Kept for old settings; new sites validate a subdomain instead.
   static String? domainError(String text) =>
       RegExp(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$')
               .hasMatch(text.trim())
           ? null
           : 'A domain like shop.example.com';
+
+  /// `gh repo create` takes owner/repo for an existing GitHub account.
+  String get githubRepoArg {
+    final pair = Site(githubRepo: githubRepo, targets: const [])
+        .githubOwnerRepo;
+    return pair == null ? name : '${pair.$1}/${pair.$2}';
+  }
 
   static String? templateError(String text) {
     text = text.trim();
@@ -88,7 +109,7 @@ class SiteCreator {
           '/usr/local/sbin/site-add',
           site.name,
           '--domain',
-          site.domain,
+          server.siteDomain(site.domain),
           '--template',
           site.template,
         ]),
@@ -109,7 +130,7 @@ class SiteCreator {
           [
             'repo',
             'create',
-            site.name,
+            site.githubRepoArg,
             site.githubPrivate ? '--private' : '--public',
             '--source',
             site.dir,

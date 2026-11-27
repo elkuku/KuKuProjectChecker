@@ -87,6 +87,13 @@ class _SiteCardState extends State<SiteCard> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _title(context),
+                        if (!widget.site.isComplete) ...[
+                          const SizedBox(height: 4),
+                          _IncompleteBanner(
+                            fields: widget.site.site?.missingRequiredFields ??
+                                const ['required fields'],
+                          ),
+                        ],
                         if (widget.serverHealths.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           _serverStatuses(context, compact: true),
@@ -423,6 +430,125 @@ class _CountButton extends StatelessWidget {
   }
 }
 
+/// An old record that lacks one of the now required project fields. The banner
+/// names them so the user knows what the Edit dialog will mark and suggest.
+class _IncompleteBanner extends StatelessWidget {
+  final List<String> fields;
+
+  const _IncompleteBanner({required this.fields});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final missing = fields.join(', ');
+    return InfoBadge(
+      icon: Icons.error_outline,
+      text: 'Incomplete: $missing',
+      tooltip: 'Edit the project to add $missing',
+      background: colors.errorContainer,
+      foreground: colors.onErrorContainer,
+      dense: true,
+    );
+  }
+}
+
+class _VersionSpinner extends StatelessWidget {
+  const _VersionSpinner();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+        height: 22,
+        width: 22,
+        child: Padding(
+          padding: EdgeInsets.all(3),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+}
+
+/// Local versions in the mode without a selected server. There is no remote site
+/// to compare with, so the badges only say what the local repository uses.
+/// The display name of a database platform, shared by live and local badges.
+String dbPlatformName(String? platform) => switch (platform) {
+      'mariadb' => 'MariaDB',
+      'mysql' => 'MySQL',
+      'postgresql' => 'PostgreSQL',
+      'sqlite' => 'SQLite',
+      final other => other ?? 'DB',
+    };
+
+class _LocalVersions extends StatelessWidget {
+  final SiteInfo site;
+
+  const _LocalVersions({required this.site});
+
+  @override
+  Widget build(BuildContext context) {
+    final future = site.localVersions;
+    if (future == null) {
+      return const InfoBadge(
+        icon: Icons.folder_off_outlined,
+        text: 'No local repository',
+      );
+    }
+
+    return FutureBuilder<LocalVersions>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const InfoBadge(
+            icon: Icons.error_outline,
+            text: 'Local versions unavailable',
+          );
+        }
+        if (!snapshot.hasData) return const _VersionSpinner();
+
+        final local = snapshot.data!;
+        final badges = <Widget>[
+          if (local.php != null)
+            InfoBadge(
+              icon: Icons.code,
+              text: 'PHP ${local.php}',
+              tooltip: 'PHP ${local.php} locally',
+            ),
+          if (local.symfony != null)
+            InfoBadge(
+              icon: Icons.layers_outlined,
+              text: 'Symfony ${local.symfony}',
+              tooltip: 'Symfony ${local.symfony} locally',
+            ),
+          if (local.dbVersion != null)
+            InfoBadge(
+              icon: Icons.storage,
+              text: '${dbPlatformName(local.dbPlatform)} ${local.dbVersion}',
+              tooltip: 'Database ${local.dbVersion} locally',
+            ),
+        ];
+        if (badges.isEmpty) {
+          return const InfoBadge(
+            icon: Icons.info_outline,
+            text: 'No local versions found',
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Local versions',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: badges),
+          ],
+        );
+      },
+    );
+  }
+}
+
 /// The versions of a site as badges: PHP, Symfony and, if the site exposes them, its
 /// database and last deploy. A version that differs from the local repository is orange.
 class _Versions extends StatelessWidget {
@@ -432,55 +558,57 @@ class _Versions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final remote = site.systemInfo;
+    // Without a selected server there is nothing to compare with: show only what
+    // the local repository says.
+    if (remote == null) return _LocalVersions(site: site);
+
     final colors = Theme.of(context).colorScheme;
 
-    return FutureBuilder<SystemInfo>(
-      future: site.systemInfo,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return InfoBadge(
-            icon: Icons.cloud_off,
-            text: 'Not reachable',
-            background: colors.errorContainer,
-            foreground: colors.onErrorContainer,
-          );
-        }
-        if (!snapshot.hasData) {
-          return const SizedBox(
-            height: 22,
-            width: 22,
-            child: Padding(
-              padding: EdgeInsets.all(3),
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-
-        final info = snapshot.data!;
-
-        // The local versions come later or not at all; the badges show without them.
-        return FutureBuilder<LocalVersions>(
-          future: site.localVersions,
-          builder: (context, local) => Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _badges(context, info, local.data),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (site.compareServer != null)
+          Text(
+            'Compared with ${site.compareServer}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
           ),
-        );
-      },
+        const SizedBox(height: 6),
+        FutureBuilder<SystemInfo>(
+          future: remote,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return InfoBadge(
+                icon: Icons.cloud_off,
+                text: 'Not reachable',
+                background: colors.errorContainer,
+                foreground: colors.onErrorContainer,
+              );
+            }
+            if (!snapshot.hasData) return const _VersionSpinner();
+
+            final info = snapshot.data!;
+
+            // The local versions come later or not at all; the badges show without them.
+            return FutureBuilder<LocalVersions>(
+              future: site.localVersions,
+              builder: (context, local) => Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _badges(context, info, local.data),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
   List<Widget> _badges(
       BuildContext context, SystemInfo info, LocalVersions? local) {
-    String nameOf(String? platform) => switch (platform) {
-          'mariadb' => 'MariaDB',
-          'mysql' => 'MySQL',
-          'postgresql' => 'PostgreSQL',
-          'sqlite' => 'SQLite',
-          final other => other ?? 'DB',
-        };
-    final dbName = nameOf(info.dbPlatform);
+    final dbName = dbPlatformName(info.dbPlatform);
 
     return [
       _VersionBadge(
@@ -506,7 +634,7 @@ class _Versions extends StatelessWidget {
               ? null
               : local!.dbPlatform == info.dbPlatform
                   ? local.dbVersion
-                  : '${nameOf(local.dbPlatform)} ${local.dbVersion}',
+                  : '${dbPlatformName(local.dbPlatform)} ${local.dbVersion}',
           // A different database (e.g. MySQL locally, MariaDB live) never matches.
           matches: local?.dbVersion == null
               ? null
@@ -774,12 +902,15 @@ class InfoBadge extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: fg),
           SizedBox(width: dense ? 3 : 4),
-          Text(
-            text,
-            style: Theme.of(context)
-                .textTheme
-                .labelMedium
-                ?.copyWith(color: fg, fontWeight: FontWeight.w600),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context)
+                  .textTheme
+                  .labelMedium
+                  ?.copyWith(color: fg, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),

@@ -194,8 +194,16 @@ class _MyHomePageState extends State<MyHomePage> {
 
   AppServices get services => widget.services;
 
-  Server? get _active =>
-      servers.where((server) => server.name == activeServer).firstOrNull;
+  Server? get _active => _serverNamed(activeServer);
+
+  Server? _serverNamed(String name) => name.isEmpty
+      ? null
+      : servers.where((server) => server.name == name).firstOrNull;
+
+  /// The full address of [target], using its server's base URL when it stores only
+  /// a subdomain.
+  String _targetUrl(SiteTarget target) =>
+      target.urlFor(_serverNamed(target.server));
 
   @override
   void initState() {
@@ -205,7 +213,9 @@ class _MyHomePageState extends State<MyHomePage> {
     // With an active server the sites deploy elsewhere: read them again once it is known.
     _loadServers().then((_) {
       if (!mounted) return;
-      if (activeServer.isNotEmpty) loadInfos();
+      // Server base URLs are needed to derive environment addresses even when no
+      // server is selected for comparison.
+      loadInfos();
       _reloadHealth();
     });
   }
@@ -279,12 +289,15 @@ class _MyHomePageState extends State<MyHomePage> {
   SiteTarget? _targetForServer(SiteInfo info, Server server) =>
       info.targetFor(server.name);
 
-  /// A server site and an environment are the same when their address or name matches.
+  /// A server site and an environment are the same when their subdomain, address or
+  /// environment name matches.
   static bool _sameTarget(SiteTarget target, SiteHealth health) {
-    final host = target.domain;
-    if (host.isNotEmpty && health.domain == host) return true;
+    final label = target.subdomain.isNotEmpty
+        ? target.subdomain
+        : target.domain.split('.').first;
+    if (label.isNotEmpty && health.domain.split('.').first == label) return true;
     if (health.name == target.name) return true;
-    if (host.isNotEmpty && health.name == host.split('.').first) return true;
+    if (label.isNotEmpty && health.name == label) return true;
     return false;
   }
 
@@ -345,7 +358,7 @@ class _MyHomePageState extends State<MyHomePage> {
         : sites.indexWhere((site) => identical(site, info.site));
     if (index < 0) {
       index = sites.indexWhere((site) =>
-          site.mainTarget.url == info.url && site.repoPath == info.repoPath);
+          site.displayName == info.name && site.repoPath == info.repoPath);
     }
     if (index >= 0) sites[index] = sites[index].withTargets(targets);
   }
@@ -386,13 +399,14 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     if (!mounted) return;
 
-    final domain =
-        target?.domain ?? server.siteDomain(suggestedSiteName(info.name));
+    final subdomain = target?.subdomain.isNotEmpty == true
+        ? target!.subdomain
+        : suggestedSiteName(info.name);
     final result = await showDeployToServerDialog(
       context,
       server: server,
       site: info,
-      domain: domain,
+      subdomain: subdomain,
       repoPath: repoPath,
       status: status,
       remotes: remotes,
@@ -409,7 +423,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final updated = SiteTarget(
       name: index < 0 ? server.name : targets[index].name,
       server: server.name,
-      url: server.siteUrl(result.domain),
+      subdomain: result.subdomain,
       deployRemote: server.remote,
     );
     if (index < 0) {
@@ -439,27 +453,38 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  /// Starts reading a site's versions, repository status and local versions.
+  /// Starts reading a site's git status and local versions, plus the versions of
+  /// the selected server's environment when one is selected.
   SiteInfo _siteInfo(Site site) {
     final main = site.mainTarget;
-    // The list shows the errors; mark them as handled so a site that is not
-    // reachable is not also reported as an uncaught error before that.
-    final systemInfo = services.fetchInfo(main.url)..ignore();
     final repoPath =
         site.repoPath.isEmpty ? null : RepoStatus.expandHome(site.repoPath);
 
-    // The target for the active server wins; otherwise the main environment is used.
-    final activeTarget = _active == null
+    // The target for the active server wins; otherwise the main environment is used
+    // only for display, not for a remote request.
+    final active = _active;
+    final activeTarget = active == null
         ? null
         : site.targets
-            .where((target) => target.server == _active!.name)
+            .where((target) => target.server == active.name)
             .firstOrNull;
+    final visibleTarget = activeTarget ?? main;
+    final url = _targetUrl(visibleTarget);
     final deployRemote = activeTarget?.deployRemote ?? main.deployRemote;
 
+    // Only a selected server triggers a /system/info/ comparison.
+    Future<SystemInfo>? systemInfo;
+    if (active != null && activeTarget != null && url.isNotEmpty) {
+      systemInfo = services.fetchInfo(url)..ignore();
+    }
+
     final info = SiteInfo(
-      url: main.url,
+      url: url,
       name: site.displayName,
       hasName: site.name.isNotEmpty,
+      githubRepo: site.githubRepo,
+      isComplete: site.isComplete,
+      compareServer: systemInfo == null ? null : active?.name,
       systemInfo: systemInfo,
       repoStatus: repoPath == null
           ? null
@@ -468,9 +493,9 @@ class _MyHomePageState extends State<MyHomePage> {
           repoPath == null ? null : (services.readLocal(repoPath)..ignore()),
       repoPath: repoPath,
       devUrl: site.devUrl.isEmpty ? null : site.devUrl,
-      devInfo: site.devUrl.isEmpty
-          ? null
-          : (services.fetchInfo(site.devUrl)..ignore()),
+      devInfo: active != null && site.devUrl.isNotEmpty
+          ? (services.fetchInfo(site.devUrl)..ignore())
+          : null,
       upstreamTime: site.devUrl.isEmpty || repoPath == null
           ? null
           : (services.upstreamTime(repoPath)..ignore()),
@@ -528,12 +553,15 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _editSite(int index) async {
     final current = sites[index];
     final details = await showSiteDialog(context,
-        site: current, pickFolder: services.pickFolder);
+        site: current,
+        pickFolder: services.pickFolder,
+        listGitHubRepos: services.listGitHubRepos);
     if (details == null || !mounted) return;
 
     final site = Site(
       name: details.name,
       repoPath: details.repoPath,
+      githubRepo: details.githubRepo,
       devUrl: details.devUrl,
       targets: current.targets,
     );
@@ -690,10 +718,14 @@ class _MyHomePageState extends State<MyHomePage> {
       icon: const Icon(Icons.open_in_new),
       onSelected: (open) => _runOpenAction(context, open),
       itemBuilder: (context) => [
-        _menuItem(Icons.public, 'Open in browser', () => _launchUrl(info.url)),
+        if (Site.urlError(info.url) == null)
+          _menuItem(Icons.public, 'Open in browser', () => _launchUrl(info.url)),
         for (final target in info.targets.skip(1))
-          _menuItem(Icons.public, 'Open ${target.name} (${target.domain})',
-              () => _launchUrl(target.url)),
+          if (Site.urlError(_targetUrl(target)) == null)
+            _menuItem(
+                Icons.public,
+                'Open ${target.name} (${Uri.parse(_targetUrl(target)).host})',
+                () => _launchUrl(_targetUrl(target))),
         if (info.devUrl != null)
           _menuItem(Icons.science_outlined, 'Open dev site',
               () => _launchUrl(info.devUrl!)),

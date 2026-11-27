@@ -15,22 +15,24 @@ import 'package:kuku_project_checker/support/site_info.dart';
 
 import 'helpers.dart';
 
-const plesk = Server(name: 'Plesk', remote: 'elkuku.dev');
+const plesk = Server(
+  name: 'Plesk',
+  remote: 'elkuku.dev',
+  baseUrl: 'https://example.com',
+);
 const vm1 = Server(
   name: 'VM 1',
   remote: 'vm1',
   sshHost: 'vm1.example.com',
   sshPort: 2222,
-  sitePort: 8443,
-  domainSuffix: 'vm1.localhost',
+  baseUrl: 'https://vm1.localhost:8443',
 );
 const vm2 = Server(
   name: 'VM 2',
   remote: 'vm2',
   sshHost: 'vm2.example.com',
   sshPort: 2222,
-  sitePort: 8443,
-  domainSuffix: 'vm2.localhost',
+  baseUrl: 'https://vm2.localhost:8443',
 );
 
 class _MemorySettings extends Settings {
@@ -145,13 +147,14 @@ void main() {
     test('save and read targets including Plesk and KMyServer', () {
       const pleskTarget = SiteTarget(
         name: 'plesk',
-        url: 'https://shop.example.com',
+        server: 'Plesk',
+        subdomain: 'shop',
         deployRemote: 'elkuku.dev',
       );
       const vmTarget = SiteTarget(
         name: 'vm',
         server: 'VM 1',
-        url: 'https://shop.vm1.localhost:8443',
+        subdomain: 'shop',
         deployRemote: 'vm1',
       );
       final site = Site(
@@ -164,7 +167,10 @@ void main() {
       final restored = Site.fromJson(json);
       expect(restored.targets, [pleskTarget, vmTarget]);
       expect(restored.targets.last.server, 'VM 1');
-      expect(restored.targets.last.domain, 'shop.vm1.localhost');
+      expect(restored.targets.last.subdomain, 'shop');
+      expect(restored.targets.first.urlFor(plesk), 'https://shop.example.com');
+      expect(restored.targets.last.urlFor(vm1),
+          'https://shop.vm1.localhost:8443');
     });
 
     test('old settings are migrated into the first environment', () {
@@ -186,13 +192,45 @@ void main() {
       expect(Site.fromJson(json).targets, site.targets);
     });
 
-    test('a server domain suffix is saved only when set', () {
+    test('a server saves only its canonical base URL', () {
       final json = vm1.toJson();
-      expect(json['domainSuffix'], 'vm1.localhost');
+      expect(json['baseUrl'], 'https://vm1.localhost:8443');
+      expect(json, isNot(contains('domainSuffix')));
+      expect(json, isNot(contains('sitePort')));
       expect(Server.fromJson(json), vm1);
+      expect(vm1.hasUrl, isTrue);
       expect(vm1.siteDomain('shop'), 'shop.vm1.localhost');
-      expect(plesk.toJson(), isNot(contains('domainSuffix')));
-      expect(plesk.siteDomain('shop'), 'shop');
+      expect(vm1.siteUrl('shop'), 'https://shop.vm1.localhost:8443');
+      expect(plesk.toJson()['baseUrl'], 'https://example.com');
+      expect(plesk.siteDomain('shop'), 'shop.example.com');
+      expect(plesk.siteUrl('shop'), 'https://shop.example.com');
+    });
+
+    test('legacy servers still derive their address from suffix and port', () {
+      const legacy = Server(
+        name: 'Legacy VM',
+        remote: 'legacy',
+        domainSuffix: 'old.localhost',
+        sitePort: 8443,
+      );
+      expect(legacy.effectiveBaseUrl, 'https://old.localhost:8443');
+      expect(legacy.hasUrl, isTrue);
+      expect(legacy.siteDomain('shop'), 'shop.old.localhost');
+      expect(legacy.siteUrl('shop'), 'https://shop.old.localhost:8443');
+      final json = legacy.toJson();
+      expect(json['domainSuffix'], 'old.localhost');
+      expect(json['sitePort'], 8443);
+      expect(Server.fromJson(json).effectiveBaseUrl,
+          'https://old.localhost:8443');
+      // Editing the server converts it: the new record carries only its base URL.
+      final edited = Server.fromJson({
+        ...json,
+        'baseUrl': legacy.effectiveBaseUrl,
+        'domainSuffix': '',
+      });
+      expect(edited.toJson(), isNot(contains('domainSuffix')));
+      expect(edited.toJson(), isNot(contains('sitePort')));
+      expect(edited.toJson()['baseUrl'], 'https://old.localhost:8443');
     });
 
     testWidgets('Environments… adds a Plesk target and saves it',
@@ -221,8 +259,9 @@ void main() {
       await tester.tap(find.widgetWithText(DropdownMenuItem<String>, 'Plesk'),
           warnIfMissed: false);
       await tester.pumpAndSettle();
-      await tester.enterText(find.widgetWithText(TextFormField, 'Address'),
-          'https://shop.example.com');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Subdomain'), 'shop');
+      expect(find.textContaining('https://shop.example.com'), findsWidgets);
       await tester.enterText(
           find.widgetWithText(TextFormField, 'Deploy remote'), 'elkuku.dev');
       await tester.tap(find.widgetWithText(FilledButton, 'OK'));
@@ -237,7 +276,7 @@ void main() {
         const SiteTarget(
           name: 'plesk',
           server: 'Plesk',
-          url: 'https://shop.example.com',
+          subdomain: 'shop',
           deployRemote: 'elkuku.dev',
         ),
       ]);
@@ -262,7 +301,7 @@ void main() {
         preferences: _Preferences([vm1, vm2], 'VM 1'),
         services: _services(settings, health: (server) async {
           return ServerHealth.fromJson(
-              _health('test-${server.name}', 'shop.${server.domainSuffix}'));
+              _health('test-${server.name}', server.siteDomain('shop')));
         }),
       ));
       await tester.pumpAndSettle();
@@ -286,7 +325,7 @@ void main() {
             const SiteTarget(
               name: 'vm1',
               server: 'VM 1',
-              url: 'https://shop.vm1.localhost:8443',
+              subdomain: 'shop',
             ),
           ],
         ),
@@ -295,7 +334,7 @@ void main() {
         preferences: _Preferences([vm1, vm2], 'VM 1'),
         services: _services(settings, health: (server) async {
           return ServerHealth.fromJson(
-              _health('test-${server.name}', 'shop.${server.domainSuffix}'));
+              _health('test-${server.name}', server.siteDomain('shop')));
         }),
       ));
       await tester.pumpAndSettle();
@@ -318,12 +357,12 @@ void main() {
             SiteTarget(
                 name: 'vm1',
                 server: 'VM 1',
-                url: 'https://shop.vm1.localhost:8443',
+                subdomain: 'shop',
                 deployRemote: 'vm1'),
             SiteTarget(
                 name: 'vm2',
                 server: 'VM 2',
-                url: 'https://shop.vm2.localhost:8443',
+                subdomain: 'shop',
                 deployRemote: 'vm2'),
           ],
         ),
@@ -333,7 +372,7 @@ void main() {
         services: _services(settings, health: (server) async {
           fetched.add(server.name);
           return ServerHealth.fromJson(
-              _health('test-${server.name}', 'shop.${server.domainSuffix}'));
+              _health('test-${server.name}', server.siteDomain('shop')));
         }),
       ));
       await tester.pumpAndSettle();

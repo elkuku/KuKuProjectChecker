@@ -10,7 +10,18 @@ class SiteInfo {
 
   /// True if [name] was set in the settings (not taken from the URL).
   final bool hasName;
-  final Future<SystemInfo> systemInfo;
+
+  /// The required GitHub repository; empty for old incomplete records.
+  final String githubRepo;
+
+  /// False for old records missing a required field; the card shows a banner.
+  final bool isComplete;
+
+  /// The selected server the versions are compared with; null in local-only mode.
+  final String? compareServer;
+
+  /// Null when no server is selected: then only local versions and git status are shown.
+  final Future<SystemInfo>? systemInfo;
 
   /// Null when no local repository is set for the site.
   final Future<RepoStatus>? repoStatus;
@@ -41,7 +52,10 @@ class SiteInfo {
     required this.url,
     required this.name,
     this.hasName = false,
-    required this.systemInfo,
+    this.githubRepo = '',
+    this.isComplete = true,
+    this.compareServer,
+    this.systemInfo,
     this.repoStatus,
     this.localVersions,
     this.repoPath,

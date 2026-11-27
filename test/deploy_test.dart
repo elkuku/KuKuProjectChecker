@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/deployer.dart';
+import 'package:kuku_project_checker/support/local_versions.dart';
 import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/settings.dart';
@@ -256,6 +257,8 @@ void main() {
           fetchInfo: (_) async =>
               const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
           checkRepo: (_, __) async => status,
+          // No server is active: the details show local versions only.
+          readLocal: (_) async => const LocalVersions(),
           openInTargets: const [],
           push: (a, b, c, d) async => 0,
         ),

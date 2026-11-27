@@ -13,18 +13,18 @@ import 'push_log_view.dart';
 /// What the dialog created, so the caller can record the target in the project settings.
 typedef DeployToServerResult = ({
   String siteName,
-  String domain,
+  String subdomain,
   bool pushed,
   String? error,
 });
 
 /// Creates a site for a local project on a KMyServer, then pushes the project to it.
-/// Returns null when no site was created, otherwise the name/domain to record.
+/// Returns null when no site was created, otherwise the name/subdomain to record.
 Future<DeployToServerResult?> showDeployToServerDialog(
   BuildContext context, {
   required Server server,
   required SiteInfo site,
-  required String domain,
+  required String subdomain,
   required String repoPath,
   required RepoStatus status,
   required List<(String, String)> remotes,
@@ -38,7 +38,7 @@ Future<DeployToServerResult?> showDeployToServerDialog(
       builder: (_) => DeployToServerDialog(
         server: server,
         site: site,
-        domain: domain,
+        subdomain: subdomain,
         repoPath: repoPath,
         status: status,
         remotes: remotes,
@@ -64,7 +64,7 @@ enum _Stage { form, running, deploying, done, failed }
 class DeployToServerDialog extends StatefulWidget {
   final Server server;
   final SiteInfo site;
-  final String domain;
+  final String subdomain;
   final String repoPath;
   final RepoStatus status;
   final List<(String, String)> remotes;
@@ -76,7 +76,7 @@ class DeployToServerDialog extends StatefulWidget {
     super.key,
     required this.server,
     required this.site,
-    required this.domain,
+    required this.subdomain,
     required this.repoPath,
     required this.status,
     required this.remotes,
@@ -95,7 +95,7 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
 
   late final name =
       TextEditingController(text: suggestedSiteName(widget.site.name));
-  late final domain = TextEditingController(text: widget.domain);
+  late final subdomain = TextEditingController(text: widget.subdomain);
   late final template =
       TextEditingController(text: suggestedTemplate(widget.remotes) ?? '');
 
@@ -115,7 +115,7 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
 
   @override
   void dispose() {
-    for (final controller in [name, domain, template, scroll]) {
+    for (final controller in [name, subdomain, template, scroll]) {
       controller.dispose();
     }
     super.dispose();
@@ -167,7 +167,7 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
         '/usr/local/sbin/site-add',
         name.text.trim(),
         '--domain',
-        domain.text.trim(),
+        widget.server.siteDomain(subdomain.text.trim()),
         '--template',
         template.text.trim(),
         if (createDb) ...['--db', 'postgresql'],
@@ -269,7 +269,7 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
             // claim that the deploy finished.
             result = (
               siteName: siteName,
-              domain: domain.text.trim(),
+              subdomain: subdomain.text.trim(),
               pushed: false,
               error: 'Importing the database backup failed (exit $exitCode): '
                   'the site and its database were created, but nothing was deployed',
@@ -305,7 +305,7 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
       // Record the target even when the push/deploy did not finish: the site now exists.
       result = (
         siteName: siteName,
-        domain: domain.text.trim(),
+        subdomain: subdomain.text.trim(),
         pushed: pushed,
         error: null,
       );
@@ -376,11 +376,15 @@ class _DeployToServerDialogState extends State<DeployToServerDialog> {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: domain,
-                      validator: (value) => NewSite.domainError(value ?? ''),
-                      decoration: const InputDecoration(
-                        labelText: 'Domain',
-                        border: OutlineInputBorder(),
+                      controller: subdomain,
+                      validator: (value) => NewSite.subdomainError(value ?? ''),
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        labelText: 'Subdomain',
+                        hintText: 'shop',
+                        helperText:
+                            'Address: ${widget.server.siteUrl(subdomain.text.trim().isEmpty ? 'shop' : subdomain.text.trim())}',
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 10),

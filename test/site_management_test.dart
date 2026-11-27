@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
+import 'package:kuku_project_checker/support/github_repos.dart';
 import 'package:kuku_project_checker/support/local_versions.dart';
-import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
@@ -32,17 +33,12 @@ class _MemorySettings extends Settings {
   }
 }
 
-class _Light extends Preferences {
-  @override
-  Future<ThemeMode> readThemeMode() async => ThemeMode.light;
-
-  @override
-  Future<void> writeThemeMode(ThemeMode mode) async {}
-}
-
 final _shop = legacySite(
     name: 'Shop', url: 'https://shop.example.com', repoPath: '/repos/shop');
-final _blog = legacySite(name: 'Blog', url: 'https://blog.example.com');
+final _blog = legacySite(
+    name: 'Blog',
+    url: 'https://blog.example.com',
+    repoPath: '~/repos/blog');
 
 void main() {
   late _MemorySettings settings;
@@ -56,7 +52,9 @@ void main() {
   final pickedFrom = <String?>[];
 
   Future<void> showApp(WidgetTester tester, List<Site> sites,
-      {double width = 1000}) async {
+      {double width = 1000,
+      List<GitHubRepo> githubRepos = const [],
+      Future<List<GitHubRepo>> Function()? githubLookup}) async {
     tester.view.physicalSize = Size(width, 760);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -65,7 +63,9 @@ void main() {
     fetched = [];
     checkedWith = [];
     await tester.pumpWidget(MyApp(
-      preferences: _Light(),
+      // No server: the cards show git status and local versions only, so fetched
+      // stays empty and checkedWith records the repository reloads instead.
+      preferences: TestPreferences(),
       services: AppServices(
         settings: settings,
         fetchInfo: (url) async {
@@ -84,6 +84,7 @@ void main() {
         ],
         readLocal: (_) async => const LocalVersions(),
         openInTargets: const [],
+        listGitHubRepos: githubLookup ?? () async => githubRepos,
         pickFolder: (initial) async {
           pickedFrom.add(initial);
           return picked;
@@ -98,7 +99,8 @@ void main() {
 
   testWidgets('choose the deploy remote of an environment', (tester) async {
     await showApp(tester, [_shop]);
-    expect(checkedWith, [SiteTarget.autoDeploy]);
+    expect(checkedWith, isNotEmpty);
+    expect(checkedWith.first, SiteTarget.autoDeploy);
 
     await tapRowButton(tester, 'Shop', 'Environments…');
     await tester.tap(find.byTooltip('Edit Shop'));
@@ -108,12 +110,14 @@ void main() {
         find.widgetWithText(TextFormField, 'Deploy remote'), 'staging');
     await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
+    final before = checkedWith.length;
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
     expect(settings.sites.single.mainTarget.deployRemote, 'staging');
-    expect(checkedWith, [SiteTarget.autoDeploy, 'staging'],
-        reason: 'The site is checked again with the chosen remote');
+    expect(checkedWith.length, before + 1,
+        reason: 'Only the edited site is checked again');
+    expect(checkedWith.last, 'staging');
   });
 
   testWidgets('choose the repository folder', (tester) async {
@@ -126,7 +130,7 @@ void main() {
     picked = null;
     await tester.tap(find.byTooltip('Choose the folder'));
     await tester.pumpAndSettle();
-    expect(field(tester, 'Local repository').controller!.text, '');
+    expect(field(tester, 'Local repository').controller!.text, '~/repos/blog');
 
     // A folder in the home folder is shown with ~.
     picked = '$home/repos/blog';
@@ -146,6 +150,143 @@ void main() {
     picked = null;
   });
 
+  testWidgets('incomplete fields are marked and suggest values', (tester) async {
+    final old = legacySite(url: 'https://shop.example.com', incomplete: true);
+    await showApp(tester, [old]);
+
+    expect(find.textContaining('Incomplete: display name'), findsOneWidget);
+    await tapRowButton(tester, 'shop.example.com', 'Edit…');
+
+    expect(find.text('Enter a display name — suggested: Shop'), findsOneWidget);
+    expect(find.text('Enter the local repository folder — suggested: ~/repos/shop'),
+        findsOneWidget);
+    expect(find.text('Enter the GitHub repository URL'), findsOneWidget);
+    expect(find.text('No matching repository found with gh'), findsOneWidget);
+    expect(find.byTooltip('Use suggested GitHub repository'), findsNothing);
+
+    await tester.tap(find.byTooltip('Use suggested display name'));
+    await tester.tap(find.byTooltip('Use suggested local repository'));
+    await tester.pumpAndSettle();
+
+    expect(field(tester, 'Display name').controller!.text, 'Shop');
+    expect(field(tester, 'Local repository').controller!.text, '~/repos/shop');
+
+    await tester.enterText(find.widgetWithText(TextField, 'GitHub repository'),
+        'https://github.com/elkuku/shop');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(settings.sites.single.isComplete, isTrue);
+    expect(find.textContaining('Incomplete:'), findsNothing);
+  });
+
+  testWidgets('a similar existing GitHub repo is offered as the suggestion',
+      (tester) async {
+    final old = legacySite(url: 'https://shop.example.com', incomplete: true);
+    await showApp(tester, [old], githubRepos: const [
+      GitHubRepo(
+          nameWithOwner: 'elkuku/shop-app',
+          url: 'https://github.com/elkuku/shop-app'),
+    ]);
+
+    await tapRowButton(tester, 'shop.example.com', 'Edit…');
+
+    expect(find.text('Existing repo: elkuku/shop-app'), findsOneWidget);
+    expect(
+        tester.widget<Text>(find.text('Existing repo: elkuku/shop-app'))
+            .style?.color,
+        Colors.green.shade700);
+    expect(
+        find.text('Enter the GitHub repository URL — suggested: '
+            'https://github.com/elkuku/shop-app (existing repo)'),
+        findsOneWidget);
+
+    await tester.tap(find.byTooltip('Use existing GitHub repository'));
+    await tester.pumpAndSettle();
+
+    expect(field(tester, 'GitHub repository').controller!.text,
+        'https://github.com/elkuku/shop-app');
+    expect(find.text('Existing repo: elkuku/shop-app'), findsOneWidget);
+  });
+
+  testWidgets('fuzzy candidates can be chosen and are shown in green',
+      (tester) async {
+    final old = Site(
+      name: '4E Ecuador',
+      repoPath: '~/repos/4e-website',
+      targets: [
+        SiteTarget(name: '4E Ecuador', url: 'https://4e-ecuador.elkuku.dev')
+      ],
+    );
+    await showApp(tester, [old], githubRepos: const [
+      GitHubRepo(
+          nameWithOwner: '4e-ecuador/website-bot',
+          url: 'https://github.com/4e-ecuador/website-bot'),
+      GitHubRepo(
+          nameWithOwner: '4e-ecuador/website-red',
+          url: 'https://github.com/4e-ecuador/website-red'),
+    ]);
+
+    await tapRowButton(tester, '4E Ecuador', 'Edit…');
+
+    expect(find.text('Existing repo: 4e-ecuador/website-bot'), findsOneWidget);
+    expect(
+        tester
+            .widget<Text>(find.text('Existing repo: 4e-ecuador/website-bot'))
+            .style
+            ?.color,
+        Colors.green.shade700);
+    expect(find.byType(DropdownButton<GitHubRepo>), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButton<GitHubRepo>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('4e-ecuador/website-red').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Existing repo: 4e-ecuador/website-red'), findsOneWidget);
+    await tester.tap(find.byTooltip('Use existing GitHub repository'));
+    await tester.pumpAndSettle();
+
+    expect(field(tester, 'GitHub repository').controller!.text,
+        'https://github.com/4e-ecuador/website-red');
+  });
+
+  testWidgets('a running gh lookup shows a searching state', (tester) async {
+    final old = legacySite(url: 'https://shop.example.com', incomplete: true);
+    final completer = Completer<List<GitHubRepo>>();
+    await showApp(tester, [old], githubLookup: () => completer.future);
+
+    await tapRowButton(tester, 'shop.example.com', 'Edit…');
+
+    expect(find.text('Searching GitHub with gh…'), findsOneWidget);
+    expect(find.text('No matching repository found with gh'), findsNothing);
+
+    completer.complete(const [
+      GitHubRepo(
+          nameWithOwner: 'elkuku/shop', url: 'https://github.com/elkuku/shop'),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Searching GitHub with gh…'), findsNothing);
+    expect(find.text('Existing repo: elkuku/shop'), findsOneWidget);
+  });
+
+  testWidgets('a failed gh lookup is shown instead of a guessed URL',
+      (tester) async {
+    final old = legacySite(url: 'https://shop.example.com', incomplete: true);
+    await showApp(tester, [old],
+        githubLookup: () async =>
+            throw StateError('gh api user/repos failed (exit 1)'));
+
+    await tapRowButton(tester, 'shop.example.com', 'Edit…');
+
+    expect(
+        find.text('GitHub lookup failed: gh api user/repos failed (exit 1)'),
+        findsOneWidget);
+    expect(find.text('Enter the GitHub repository URL'), findsOneWidget);
+    expect(find.byTooltip('Use suggested GitHub repository'), findsNothing);
+  });
+
   test('writes the home folder as ~', () {
     final home = Platform.environment['HOME']!;
 
@@ -160,6 +301,8 @@ void main() {
 
     await tapRowButton(tester, 'Blog', 'Edit…');
 
+    expect(find.widgetWithText(TextField, 'Display name'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'GitHub repository'), findsOneWidget);
     // The address and deploy remote belong to the environments now.
     expect(find.widgetWithText(TextField, 'Site URL'), findsNothing);
     expect(find.text('Deploy remote'), findsNothing);
@@ -176,25 +319,36 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Add site'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Shop');
+    // The identity fields are all required now.
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Display name'), 'Shop');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Local repository'), '~/repos/shop');
+    await tester.enterText(find.widgetWithText(TextField, 'GitHub repository'),
+        'https://github.com/elkuku/shop');
 
     // The address is part of the first environment, edited inside the same wizard.
+    // The wizard's form is scrollable now that the identity fields are required.
+    await tester.ensureVisible(find.text('Add environment'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Add environment'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'plesk');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Address'),
-        'https://shop.example.com');
+    // Without a server the environment only stores a subdomain, not a full URL.
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Subdomain'), 'shop');
     await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
 
     expect(find.text('Shop'), findsOneWidget);
-    expect(settings.sites.single.mainTarget.url, 'https://shop.example.com');
-    expect(fetched, ['https://shop.example.com']);
+    expect(settings.sites.single.mainTarget.subdomain, 'shop');
+    expect(settings.sites.single.mainTarget.url, isEmpty);
+    expect(fetched, isEmpty, reason: 'No server is selected');
   });
 
-  testWidgets('a new environment needs a valid address', (tester) async {
+  testWidgets('a new environment needs a valid subdomain', (tester) async {
     await showApp(tester, [_shop]);
 
     await tapRowButton(tester, 'Shop', 'Environments…');
@@ -204,14 +358,13 @@ void main() {
     await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'vm');
     await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
-    expect(find.text('Enter the address of the site'), findsOneWidget);
+    expect(find.text('Enter the subdomain'), findsOneWidget);
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Address'), 'shop.example.com');
+        find.widgetWithText(TextFormField, 'Subdomain'), 'shop.example.com');
     await tester.tap(find.widgetWithText(FilledButton, 'OK'));
     await tester.pumpAndSettle();
-    expect(find.text('Use a full address, like https://shop.example.com'),
-        findsOneWidget);
+    expect(find.text('Use lowercase letters, digits and dashes'), findsOneWidget);
     expect(settings.writes, 0);
 
     // Cancel adds nothing.
@@ -224,13 +377,15 @@ void main() {
 
   testWidgets('edit a site and reload only that one', (tester) async {
     await showApp(tester, [_shop, _blog]);
-    expect(fetched, hasLength(2));
+    expect(fetched, isEmpty, reason: 'No server is selected');
+    final before = checkedWith.length;
 
     await tapRowButton(tester, 'Blog', 'Edit…');
 
     expect(find.text('Edit site'), findsOneWidget);
-    expect(field(tester, 'Name').controller!.text, 'Blog');
-    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'News');
+    expect(field(tester, 'Display name').controller!.text, 'Blog');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Display name'), 'News');
     await tester.enterText(
         find.widgetWithText(TextField, 'Local repository'), '~/repos/news');
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -240,7 +395,9 @@ void main() {
     expect(find.text('Blog'), findsNothing);
     expect(settings.sites[1].name, 'News');
     expect(settings.sites[1].repoPath, '~/repos/news');
-    expect(fetched, hasLength(3), reason: 'Only the edited site is read again');
+    expect(fetched, isEmpty);
+    expect(checkedWith.length, before + 1,
+        reason: 'Only the edited site is checked again');
     // The repository status is in the expanded details.
     await expandRow(tester, 'News');
     expect(find.textContaining('master'), findsOneWidget);

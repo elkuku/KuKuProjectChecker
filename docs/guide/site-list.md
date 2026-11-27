@@ -1,8 +1,10 @@
 # The site list
 
 Each project is one compact row with its name, its address, the buttons you need most and, when a
-KMyServer reports about it, its server badges. Versions and repository details are hidden until you
-click the row; the server status always stays beside the list.
+server reports about it, its server badges. Versions and repository details are hidden until you
+click the row; a KMyServer's status always stays beside the list. With no server selected, the app
+does not request `/system/info/` at all: the row shows only git status and the versions read from
+the local repository.
 
 ![The site list](../screenshots/01_sites-dark.png){.theme-dark}
 ![The site list](../screenshots/01_sites-light.png){.theme-light}
@@ -12,7 +14,8 @@ click the row; the server status always stays beside the list.
 
 Click the row (or its ▾ button) to see the versions, the repository status and the rest of the
 actions. Click it again to hide them. The uncommitted changes are opened by their own button in the
-row; see [Uncommitted changes](./changes).
+row; see [Uncommitted changes](./changes). An old record lacking required project fields gets an
+**Incomplete:** badge that names those fields; **Edit…** marks them and offers suggested values.
 
 ![Expanded row](../screenshots/10_expanded_row-dark.png){.theme-dark}
 ![Expanded row](../screenshots/10_expanded_row-light.png){.theme-light}
@@ -40,6 +43,9 @@ The upstream branch is compared as of your last fetch or push, like the reposito
 
 If a site has a local repository, the app compares its versions with the ones the project uses on
 this machine. A badge that differs turns **orange** with ⇄; hover over it to see both versions.
+With no server selected only the local side is shown. With a server selected, a project having an
+environment there gets its live versions from the address derived from the server base URL and the
+project's subdomain — Plesk works the same way as a KMyServer here.
 
 | Badge | Local version from | Compared |
 |---|---|---|

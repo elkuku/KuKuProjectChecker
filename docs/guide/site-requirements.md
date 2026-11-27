@@ -18,7 +18,9 @@ A site can also tell its database and its last deploy (KuKu system tools bundle 
 }
 ```
 
-A site without this endpoint, or one that doesn't answer, shows **Not reachable**.
+A site without this endpoint, or one that doesn't answer, shows **Not reachable**. With no server
+selected the app does not call this endpoint: only the versions found in the local repository are
+displayed. Selecting a server enables the comparison for projects that have an environment on it.
 
 ## With the KuKu system tools bundle
 

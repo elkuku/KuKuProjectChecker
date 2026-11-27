@@ -14,25 +14,35 @@ class Server {
   /// The SSH port, if not 22 (e.g. 2222 for the local test VM).
   final int? sshPort;
 
-  /// The HTTPS port the sites answer on, if not 443 (e.g. 8443 for the local test VM).
-  final int? sitePort;
+  /// The canonical base address of this server, e.g. `https://vm.localhost:8443`.
+  /// A project only supplies a subdomain in front of its host.
+  final String baseUrl;
 
-  /// Default suffix for sites on this server, e.g. `localhost` or `kmy.example.com`.
-  /// A new site's domain is `<site name>.<domainSuffix>`; empty means the project's own
-  /// domain is used instead (local Symfony, Plesk).
+  /// Legacy fields, read from older settings but never written for new servers.
+  /// [domainSuffix] was `<site name>.<domainSuffix>`; [sitePort] was separate.
   final String domainSuffix;
+  final int? sitePort;
 
   const Server({
     required this.name,
     required this.remote,
     this.sshHost = '',
     this.sshPort,
-    this.sitePort,
+    this.baseUrl = '',
     this.domainSuffix = '',
+    this.sitePort,
   });
 
   /// New sites can be created on it from a template.
   bool get isKMyServer => sshHost.isNotEmpty;
+
+  /// The configured URL, or the one derived from legacy fields. Old settings stay
+  /// usable; editing a server writes [baseUrl] only.
+  String get effectiveBaseUrl =>
+      baseUrl.isNotEmpty ? baseUrl : _legacyBaseUrl;
+
+  /// False until a valid base URL is configured; such servers are flagged in the UI.
+  bool get hasUrl => urlError(effectiveBaseUrl) == null;
 
   /// The `ssh` arguments that reach [user] on this server, followed by [command].
   List<String> sshArgs(String user, List<String> command) => [
@@ -41,18 +51,50 @@ class Server {
         ...command,
       ];
 
-  /// The address of a site on this server.
-  String siteUrl(String domain) =>
-      sitePort == null ? 'https://$domain' : 'https://$domain:$sitePort';
+  String get _legacyBaseUrl => domainSuffix.isEmpty
+      ? ''
+      : 'https://$domainSuffix${sitePort == null ? '' : ':$sitePort'}';
+
+  /// The host of a project environment: the project's subdomain in front of this
+  /// server's host. A full domain from an older setting stays unchanged.
+  String siteDomain(String subdomainOrDomain) {
+    final value = subdomainOrDomain.trim();
+    if (value.isEmpty) return '';
+    final host = effectiveBaseUrl.isEmpty
+        ? domainSuffix
+        : Uri.parse(effectiveBaseUrl).host;
+    if (host.isEmpty) return value;
+    if (value == host ||
+        value.endsWith('.$host') ||
+        (domainSuffix.isNotEmpty &&
+            (value == domainSuffix || value.endsWith('.$domainSuffix'))) ||
+        // A legacy site on another domain is still a full domain, not a subdomain.
+        value.contains('.')) {
+      return value;
+    }
+
+    return '$value.$host';
+  }
+
+  /// The address of a project environment on this server. [subdomainOrDomain] is a
+  /// subdomain for new records; a legacy full domain is accepted unchanged so old
+  /// settings keep working. Only the scheme, host and port of the base URL are used.
+  String siteUrl(String subdomainOrDomain) {
+    final host = siteDomain(subdomainOrDomain);
+    if (host.isEmpty) return '';
+    final base = effectiveBaseUrl;
+    if (base.isEmpty) {
+      return 'https://$host${sitePort == null ? '' : ':$sitePort'}';
+    }
+
+    final uri = Uri.parse(base);
+    return '${uri.scheme}://$host${uri.hasPort ? ':${uri.port}' : ''}';
+  }
 
   /// The git URL of a site's repository on this KMyServer server.
   String siteRepoUrl(String site) => sshPort == null
       ? '$site@$sshHost:/srv/sites/$site/repo.git'
       : 'ssh://$site@$sshHost:$sshPort/srv/sites/$site/repo.git';
-
-  /// The default domain for a new site with [name] on this server.
-  String siteDomain(String name) =>
-      domainSuffix.isEmpty ? name : '$name.$domainSuffix';
 
   /// An error for a git remote name, or null if [text] can be one.
   static String? remoteError(String text) {
@@ -60,6 +102,22 @@ class Server {
     if (text.isEmpty) return 'Enter the name of the git remote';
     if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(text)) {
       return 'Letters, digits, ".", "_" and "-" only';
+    }
+
+    return null;
+  }
+
+  /// A server needs a full http(s) base URL so projects only add a subdomain.
+  static String? urlError(String text) {
+    text = text.trim();
+    if (text.isEmpty || text == 'https://' || text == 'http://') {
+      return 'Enter the base URL of the server';
+    }
+    final uri = Uri.tryParse(text);
+    if (uri == null ||
+        !(uri.scheme == 'http' || uri.scheme == 'https') ||
+        uri.host.isEmpty) {
+      return 'Use a full address, like https://vm.example.com';
     }
 
     return null;
@@ -73,8 +131,9 @@ class Server {
       remote: text('remote'),
       sshHost: text('sshHost'),
       sshPort: json['sshPort'] is int ? json['sshPort'] : null,
-      sitePort: json['sitePort'] is int ? json['sitePort'] : null,
+      baseUrl: text('baseUrl'),
       domainSuffix: text('domainSuffix'),
+      sitePort: json['sitePort'] is int ? json['sitePort'] : null,
     );
   }
 
@@ -83,8 +142,12 @@ class Server {
         'remote': remote,
         if (sshHost.isNotEmpty) 'sshHost': sshHost,
         if (sshPort != null) 'sshPort': sshPort,
-        if (sitePort != null) 'sitePort': sitePort,
-        if (domainSuffix.isNotEmpty) 'domainSuffix': domainSuffix,
+        if (baseUrl.isNotEmpty) 'baseUrl': baseUrl,
+        // Keep an untouched legacy server usable when another server is saved.
+        // Editing it writes baseUrl instead and drops these fields.
+        if (baseUrl.isEmpty && domainSuffix.isNotEmpty)
+          'domainSuffix': domainSuffix,
+        if (baseUrl.isEmpty && sitePort != null) 'sitePort': sitePort,
       };
 
   @override
@@ -94,10 +157,11 @@ class Server {
       other.remote == remote &&
       other.sshHost == sshHost &&
       other.sshPort == sshPort &&
-      other.sitePort == sitePort &&
-      other.domainSuffix == domainSuffix;
+      other.baseUrl == baseUrl &&
+      other.domainSuffix == domainSuffix &&
+      other.sitePort == sitePort;
 
   @override
-  int get hashCode =>
-      Object.hash(name, remote, sshHost, sshPort, sitePort, domainSuffix);
+  int get hashCode => Object.hash(
+      name, remote, sshHost, sshPort, baseUrl, domainSuffix, sitePort);
 }

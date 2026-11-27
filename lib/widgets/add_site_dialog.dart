@@ -74,19 +74,21 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
       widget.servers.where((server) => server.isKMyServer).toList();
 
   // An existing project needs no server; the template form is disabled without one.
-  late Server server = widget.server ?? _kmyservers.first;
+  late Server? server = widget.server ?? (_kmyservers.isEmpty ? null : _kmyservers.first);
 
   /// Fields for an existing project.
   final projectName = TextEditingController();
   final localRepo = TextEditingController();
+  final projectGithubRepo = TextEditingController();
   final devUrl = TextEditingController();
   List<SiteTarget> targets = const [];
   String? targetError;
 
   /// Fields for a new site from a template.
   final name = TextEditingController();
+  final displayName = TextEditingController();
   final domain = TextEditingController();
-  final url = TextEditingController();
+  final githubRepoUrl = TextEditingController();
   final otherTemplate = TextEditingController();
   late final parent =
       TextEditingController(text: RepoStatus.expandHome('~/repos'));
@@ -94,8 +96,6 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
   bool github = true;
   bool githubPrivate = true;
 
-  /// The URL follows the domain until the user edits it.
-  bool urlEdited = false;
   String? folderError;
 
   _Stage stage = _Stage.form;
@@ -110,10 +110,12 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
     for (final c in [
       projectName,
       localRepo,
+      projectGithubRepo,
       devUrl,
       name,
+      displayName,
       domain,
-      url,
+      githubRepoUrl,
       otherTemplate,
       parent,
     ]) {
@@ -125,15 +127,18 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
   Site get _projectSite => Site(
         name: projectName.text.trim(),
         repoPath: localRepo.text.trim(),
+        githubRepo: projectGithubRepo.text.trim(),
         devUrl: devUrl.text.trim(),
         targets: targets,
       );
 
   NewSite get _site => NewSite(
-        server: server,
+        server: server!,
         name: name.text.trim(),
+        displayName: displayName.text.trim(),
         domain: domain.text.trim(),
-        url: url.text.trim(),
+        url: server!.siteUrl(domain.text.trim()),
+        githubRepo: githubRepoUrl.text.trim(),
         template: template == _other ? otherTemplate.text.trim() : template,
         parentDir: parent.text.trim(),
         github: github,
@@ -153,6 +158,10 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
     }
 
     setState(() => folderError = null);
+    if (server == null) {
+      setState(() => folderError = 'Add a KMyServer in Servers… first');
+      return;
+    }
     if (!form.currentState!.validate()) return;
     final site = _site;
     if (await widget.exists(site.dir)) {
@@ -200,7 +209,7 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
 
   String _stepLabel(CreateStep s) => switch (s) {
         CreateStep.server =>
-          'Create ${name.text.trim()} on ${server.name} and deploy the template',
+          'Create ${name.text.trim()} on ${server?.name ?? 'the server'} and deploy the template',
         CreateStep.clone => 'Clone it to ${_site.dir}',
         CreateStep.github =>
           'Create the ${githubPrivate ? 'private' : 'public'} GitHub repository',
@@ -249,14 +258,15 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
         _Stage.done => [
             FilledButton(
               onPressed: () => Navigator.of(context).pop(Site(
-                name: _site.name,
+                name: _site.displayName,
                 repoPath: _site.dir,
+                githubRepo: _site.githubRepo,
                 targets: [
                   SiteTarget(
                     name: _site.name,
-                    server: server.name,
-                    url: _site.url,
-                    deployRemote: server.remote,
+                    server: server!.name,
+                    subdomain: _site.domain,
+                    deployRemote: server!.remote,
                   )
                 ],
               )),
@@ -324,30 +334,42 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
+          TextFormField(
             controller: projectName,
             autofocus: true,
             decoration: const InputDecoration(
-              labelText: 'Name',
-              helperText: 'Optional; the first environment is used when empty',
+              labelText: 'Display name',
+              hintText: 'Shop',
             ),
+            validator: (text) => Site.nameError(text ?? ''),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 12),
-          TextField(
+          TextFormField(
             controller: localRepo,
             decoration: InputDecoration(
               labelText: 'Local repository',
               hintText: '~/repos/shop',
-              helperText:
-                  'Optional; shows the repository status, its changes and deploys',
+              helperText: 'Shows the repository status, its changes and deploys',
               suffixIcon: IconButton(
                 icon: const Icon(Icons.folder_open),
                 tooltip: 'Choose the folder',
                 onPressed: _chooseRepo,
               ),
             ),
-            onSubmitted: (_) => _create(),
+            validator: (text) => Site.repoPathError(text ?? ''),
+            onFieldSubmitted: (_) => _create(),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: projectGithubRepo,
+            decoration: const InputDecoration(
+              labelText: 'GitHub repository',
+              hintText: 'https://github.com/elkuku/shop',
+            ),
+            keyboardType: TextInputType.url,
+            validator: (text) => Site.githubRepoError(text ?? ''),
+            onFieldSubmitted: (_) => _create(),
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -396,39 +418,54 @@ class _AddSiteDialogState extends State<_AddSiteDialog> {
                         '${s.name}  (${s.sshHost}${s.sshPort == null ? '' : ':${s.sshPort}'})',
                         overflow: TextOverflow.ellipsis)),
             ],
-            onChanged: (s) => setState(() {
-              server = s!;
-              if (!urlEdited && domain.text.trim().isNotEmpty) {
-                url.text = server.siteUrl(domain.text.trim());
-              }
-            }),
+            onChanged: (s) => setState(() => server = s!),
           ),
+          if (server != null && !server!.hasUrl)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Set a base URL for ${server!.name} in Servers… first.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           TextFormField(
             controller: name,
             autofocus: true,
             decoration: const InputDecoration(
-                labelText: 'Name',
+                labelText: 'Site name',
                 hintText: 'shop',
                 helperText:
                     'User, folder and database on the server; also the local folder'),
             validator: (text) => NewSite.nameError(text ?? ''),
           ),
           TextFormField(
-            controller: domain,
+            controller: displayName,
             decoration: const InputDecoration(
-                labelText: 'Domain', hintText: 'shop.example.com'),
-            validator: (text) => NewSite.domainError(text ?? ''),
-            onChanged: (text) {
-              if (!urlEdited) url.text = server.siteUrl(text.trim());
-            },
+                labelText: 'Display name',
+                hintText: 'Shop',
+                helperText: 'How the project appears in the list'),
+            validator: (text) => Site.nameError(text ?? ''),
           ),
           TextFormField(
-            controller: url,
+            controller: domain,
+            decoration: InputDecoration(
+              labelText: 'Subdomain',
+              hintText: 'shop',
+              helperText: server?.hasUrl == true
+                  ? 'Address: ${server!.siteUrl(domain.text.trim().isEmpty ? 'shop' : domain.text.trim())}'
+                  : 'The label added to the server’s base URL',
+            ),
+            validator: (text) => NewSite.subdomainError(text ?? ''),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextFormField(
+            controller: githubRepoUrl,
             decoration: const InputDecoration(
-                labelText: 'Site address',
-                helperText: 'For the list; e.g. with a port for the test VM'),
-            validator: (text) => Site.urlError(text ?? ''),
-            onChanged: (_) => urlEdited = true,
+                labelText: 'GitHub repository',
+                hintText: 'https://github.com/elkuku/shop',
+                helperText: 'Required, even when the repository is created below'),
+            keyboardType: TextInputType.url,
+            validator: (text) => Site.githubRepoError(text ?? ''),
           ),
           DropdownButtonFormField<String>(
             isExpanded: true,

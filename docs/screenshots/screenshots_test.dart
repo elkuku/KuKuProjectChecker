@@ -23,10 +23,11 @@ import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
 
-/// A sample project with one environment.
-Site sampleSite({
-  required String url,
-  String name = '',
+/// A sample project with one environment on the test VM. The project stores only
+/// a subdomain; the server's base URL makes the full address.
+Site sampleSite(
+  String name,
+  String subdomain, {
   String repoPath = '',
   String deployRemote = '',
   String devUrl = '',
@@ -34,39 +35,46 @@ Site sampleSite({
     Site(
       name: name,
       repoPath: repoPath,
+      githubRepo: 'https://github.com/example/$subdomain',
       devUrl: devUrl,
       targets: [
         SiteTarget(
-          name: name.isNotEmpty ? name : Uri.tryParse(url)?.host ?? '',
-          url: url,
+          name: 'vm',
+          server: 'Test VM',
+          subdomain: subdomain,
           deployRemote: deployRemote,
         )
       ],
     );
 
 final sites = [
-  sampleSite(
-      name: 'Shop',
-      url: 'https://shop.example.com',
+  sampleSite('Shop', 'shop',
       repoPath: '~/repos/shop',
+      deployRemote: 'production',
       devUrl: 'https://dev.shop.example.com'),
-  sampleSite(
-      name: 'Blog', url: 'https://blog.example.com', repoPath: '~/repos/blog'),
-  sampleSite(url: 'https://docs.example.com'),
-  sampleSite(
-      name: 'Shop (local)',
-      url: 'https://127.0.0.1:8000',
-      repoPath: '~/repos/shop-dev'),
+  sampleSite('Blog', 'blog',
+      repoPath: '~/repos/blog', deployRemote: 'production'),
+  sampleSite('Docs', 'docs'),
+  // No environment on the active server: only its git status and local versions show.
+  Site(
+    name: 'Shop (local)',
+    repoPath: '~/repos/shop-dev',
+    githubRepo: 'https://github.com/example/shop-dev',
+    targets: [
+      const SiteTarget(
+          name: 'local', url: 'https://127.0.0.1:8000', deployRemote: '-')
+    ],
+  ),
   // Matches the site in sampleHealth, so the server-side badges show in the screenshot.
-  sampleSite(name: 'Starter', url: 'https://starter.localhost:8443'),
+  sampleSite('Starter', 'starter'),
 ];
 
 final versions = {
-  'https://shop.example.com':
+  'https://shop.localhost:8443':
       const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
-  'https://blog.example.com':
+  'https://blog.localhost:8443':
       const SystemInfo(sfVersion: '7.4.23', phpVersion: '8.4.15'),
-  'https://docs.example.com':
+  'https://docs.localhost:8443':
       const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
   'https://starter.localhost:8443':
       const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.13'),
@@ -98,11 +106,12 @@ final statuses = {
 
 const sampleServers = [
   Server(
-      name: 'Test VM',
-      remote: 'vm',
-      sshHost: 'localhost',
-      sshPort: 2222,
-      sitePort: 8443),
+    name: 'Test VM',
+    remote: 'vm',
+    sshHost: 'localhost',
+    sshPort: 2222,
+    baseUrl: 'https://localhost:8443',
+  ),
 ];
 
 final sampleHealth = ServerHealth.fromJson({

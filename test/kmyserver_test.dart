@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/kmyserver.dart';
-import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
@@ -17,14 +16,6 @@ class _OneSite extends Settings {
         legacySite(
             name: 'Shop', url: 'https://shop.example.com', repoPath: '/repo')
       ];
-}
-
-class _Light extends Preferences {
-  @override
-  Future<ThemeMode> readThemeMode() async => ThemeMode.light;
-
-  @override
-  Future<void> writeThemeMode(ThemeMode mode) async {}
 }
 
 RepoStatus _status(String url) => RepoStatus(
@@ -84,7 +75,7 @@ void main() {
         {int exitCode = 0}) async {
       final calls = <KMyServerSite>[];
       await tester.pumpWidget(MyApp(
-        preferences: _Light(),
+        preferences: TestPreferences(),
         services: AppServices(
           settings: _OneSite(),
           fetchInfo: (_) async =>

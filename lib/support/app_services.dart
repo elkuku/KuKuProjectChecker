@@ -6,6 +6,7 @@ import 'package:http/io_client.dart';
 
 import '../widgets/site_dialog.dart' as site_dialog;
 import 'deployer.dart';
+import 'github_repos.dart';
 import 'local_versions.dart';
 import 'open_in.dart';
 import 'repo_changes.dart';
@@ -53,6 +54,9 @@ class AppServices {
   /// The folder chooser for a site's local repository.
   final site_dialog.PickFolder pickFolder;
 
+  /// Finds existing GitHub repositories with a name similar to a suggestion.
+  final GitHubRepoLookup listGitHubRepos;
+
   /// When the newest commit of a repository's upstream branch was made, to see whether
   /// a dev site that deploys from it is behind.
   final Future<DateTime?> Function(String repoPath) upstreamTime;
@@ -72,6 +76,7 @@ class AppServices {
     Future<bool> Function(String path)? pathExists,
     List<(OpenInTarget, String)>? openInTargets,
     site_dialog.PickFolder? pickFolder,
+    GitHubRepoLookup? listGitHubRepos,
     Future<DateTime?> Function(String repoPath)? upstreamTime,
   })  : settings = settings ?? Settings(),
         fetchInfo = fetchInfo ?? fetchSystemInfo,
@@ -91,6 +96,7 @@ class AppServices {
                 FileSystemEntityType.notFound),
         openInTargets = openInTargets ?? OpenInTarget.available(),
         pickFolder = pickFolder ?? site_dialog.pickFolder,
+        listGitHubRepos = listGitHubRepos ?? lookupGitHubRepos,
         upstreamTime = upstreamTime ?? RepoStatus.upstreamCommitTime;
 
   /// Local development servers (Caddy's local CA on the test VM, the Symfony CLI) use their

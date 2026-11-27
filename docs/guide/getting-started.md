@@ -37,10 +37,11 @@ Run the script again only if the icon or the menu entry changed.
 ## First start
 
 The list is empty at first. Add your sites with **Add site** (or ＋ in the top bar): register an
-existing project, or switch the wizard to **New on KMyServer** to create one there. See
-[Managing sites](./settings). Each site has to report its versions, see
-[Site requirements](./site-requirements). The app allows one instance at a time: launching it again
-exits with a message rather than opening a second window.
+existing project with its display name, local repository and GitHub repository, or switch the
+wizard to **New on KMyServer** to create one there. See [Managing sites](./settings). To compare
+versions, add a server with its base URL in **Servers…** and put a subdomain on the project's
+[environment](./settings#environments); see [Site requirements](./site-requirements). The app allows
+one instance at a time: launching it again exits with a message rather than opening a second window.
 
 Your sites are saved in `~/.local/share/org.elkuku.kuku_project_checker/settings.json`,
 the theme choice in `preferences.json` next to it.

@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/local_versions.dart';
-import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
+import 'package:kuku_project_checker/support/server.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
@@ -28,19 +28,21 @@ class _MemorySettings extends Settings {
   }
 }
 
-class _Light extends Preferences {
-  @override
-  Future<ThemeMode> readThemeMode() async => ThemeMode.light;
-
-  @override
-  Future<void> writeThemeMode(ThemeMode mode) async {}
-}
+/// The dev badge is only read in server mode, so a server must be active.
+TestPreferences get _preferences => TestPreferences(
+      servers: const [
+        Server(
+            name: 'Plesk', remote: 'elkuku.dev', baseUrl: 'https://example.com')
+      ],
+      active: 'Plesk',
+    );
 
 final _shop = legacySite(
   name: 'Shop',
   url: 'https://shop.example.com',
   repoPath: '/repos/shop',
   devUrl: 'https://dev.shop.example.com',
+  server: 'Plesk',
 );
 
 final _deployedAt = DateTime.utc(2026, 11, 24, 18, 0);
@@ -120,21 +122,27 @@ void main() {
   group('in the app', () {
     late _MemorySettings settings;
 
-    Future<void> showApp(WidgetTester tester,
+    /// Returns the addresses read from services so the tests can tell the dev
+    /// site apart from the site the versions are compared with.
+    Future<List<String>> showApp(WidgetTester tester,
         {required Future<SystemInfo> Function() dev,
         DateTime? upstream}) async {
       tester.view.physicalSize = const Size(1200, 700);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
+      final fetched = <String>[];
       settings = _MemorySettings([_shop]);
       await tester.pumpWidget(MyApp(
-        preferences: _Light(),
+        preferences: _preferences,
         services: AppServices(
           settings: settings,
-          fetchInfo: (url) => url == _shop.devUrl
-              ? dev()
-              : Future.value(_info(at: DateTime.utc(2026, 11, 20))),
+          fetchInfo: (url) {
+            fetched.add(url);
+            return url == _shop.devUrl
+                ? dev()
+                : Future.value(_info(at: DateTime.utc(2026, 11, 20)));
+          },
           checkRepo: (_, __) async =>
               const RepoStatus(branch: 'master', uncommitted: 0, unpushed: 0),
           listRemotes: (_) async => const [],
@@ -144,6 +152,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
+      return fetched;
     }
 
     testWidgets('an up-to-date dev site', (tester) async {
@@ -157,11 +166,13 @@ void main() {
     });
 
     testWidgets('a dev site behind the upstream branch', (tester) async {
-      await showApp(tester,
+      final fetched = await showApp(tester,
           dev: () async => _info(),
           upstream: _deployedAt.add(const Duration(minutes: 10)));
       await expandRow(tester, 'Shop');
 
+      expect(fetched, contains(_shop.devUrl),
+          reason: 'The dev site is read in server mode');
       expect(find.text('dev behind'), findsOneWidget);
       final tooltip = tester.widget<Tooltip>(find.ancestor(
           of: find.text('dev behind'), matching: find.byType(Tooltip)));

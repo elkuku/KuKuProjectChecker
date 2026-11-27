@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,13 +16,14 @@ import 'package:kuku_project_checker/support/site_info.dart';
 
 import 'helpers.dart';
 
-const _plesk = Server(name: 'Plesk', remote: 'elkuku.dev');
+const _plesk = Server(
+    name: 'Plesk', remote: 'elkuku.dev', baseUrl: 'https://example.com');
 const _vm = Server(
     name: 'Test VM',
     remote: 'vm',
     sshHost: 'localhost',
     sshPort: 2222,
-    sitePort: 8443);
+    baseUrl: 'https://vm.localhost:8443');
 
 ServerHealth _healthy() => ServerHealth.fromJson({
       'schema': 1,
@@ -125,7 +127,18 @@ void main() {
       for (final server in [_plesk, _vm]) {
         expect(Server.fromJson(server.toJson()), server);
       }
-      expect(_plesk.toJson(), {'name': 'Plesk', 'remote': 'elkuku.dev'});
+      expect(_plesk.toJson(), {
+        'name': 'Plesk',
+        'remote': 'elkuku.dev',
+        'baseUrl': 'https://example.com',
+      });
+      expect(_vm.toJson(), {
+        'name': 'Test VM',
+        'remote': 'vm',
+        'sshHost': 'localhost',
+        'sshPort': 2222,
+        'baseUrl': 'https://vm.localhost:8443',
+      });
       expect(_plesk.isKMyServer, isFalse);
       expect(_vm.isKMyServer, isTrue);
     });
@@ -139,10 +152,37 @@ void main() {
           const Server(name: 'New', remote: 'kmyserver', sshHost: 'h')
               .siteRepoUrl('shop'),
           'shop@h:/srv/sites/shop/repo.git');
-      expect(_vm.siteUrl('shop.localhost'), 'https://shop.localhost:8443');
-      expect(_plesk.siteUrl('shop.example.com'), 'https://shop.example.com');
       expect(Server.remoteError('kmyserver'), isNull);
       expect(Server.remoteError('my remote'), isNotNull);
+    });
+
+    test('adds a subdomain to the base URL, but keeps legacy full domains', () {
+      expect(_vm.effectiveBaseUrl, 'https://vm.localhost:8443');
+      expect(_vm.hasUrl, isTrue);
+      expect(_vm.siteDomain('shop'), 'shop.vm.localhost');
+      expect(_vm.siteUrl('shop'), 'https://shop.vm.localhost:8443');
+      expect(_plesk.siteDomain('shop'), 'shop.example.com');
+      expect(_plesk.siteUrl('shop'), 'https://shop.example.com');
+
+      // Full domains from older settings are not prefixed again.
+      expect(_vm.siteDomain('shop.localhost'), 'shop.localhost');
+      expect(_vm.siteUrl('shop.localhost'), 'https://shop.localhost:8443');
+      expect(_plesk.siteDomain('shop.example.com'), 'shop.example.com');
+      expect(_plesk.siteUrl('shop.example.com'), 'https://shop.example.com');
+
+      // Old settings without a base URL still derive one from their legacy fields.
+      const legacy = Server(
+          name: 'Legacy',
+          remote: 'legacy',
+          domainSuffix: 'old.localhost',
+          sitePort: 8443);
+      expect(legacy.effectiveBaseUrl, 'https://old.localhost:8443');
+      expect(legacy.siteDomain('shop'), 'shop.old.localhost');
+      expect(legacy.siteUrl('shop'), 'https://shop.old.localhost:8443');
+      // Saving another server must not strip the address from an untouched legacy one.
+      expect(legacy.toJson()['domainSuffix'], 'old.localhost');
+      expect(legacy.toJson()['sitePort'], 8443);
+      expect(Server.fromJson(legacy.toJson()), legacy);
     });
 
     test('are kept in preferences.json next to the theme', () async {
@@ -160,6 +200,20 @@ void main() {
       expect(servers, [_plesk, _vm]);
       expect(active, 'Test VM');
       expect(await preferences.readThemeMode(), ThemeMode.dark);
+
+      // Only the canonical base URL is written; legacy URL fields are gone.
+      final saved = jsonDecode(await File('${dir.path}/preferences.json')
+          .readAsString()) as Map<String, dynamic>;
+      expect(saved['servers'], [
+        {'name': 'Plesk', 'remote': 'elkuku.dev', 'baseUrl': 'https://example.com'},
+        {
+          'name': 'Test VM',
+          'remote': 'vm',
+          'sshHost': 'localhost',
+          'sshPort': 2222,
+          'baseUrl': 'https://vm.localhost:8443',
+        },
+      ]);
 
       // An active server that is no longer in the list means: each site's own remote.
       await preferences.writeServers([_plesk], 'Test VM');
@@ -241,6 +295,9 @@ void main() {
       await tester.enterText(
           find.widgetWithText(TextFormField, 'Git remote'), 'kmyserver');
       await tester.enterText(
+          find.widgetWithText(TextFormField, 'Server base URL'),
+          'https://new.example.com');
+      await tester.enterText(
           find.widgetWithText(TextFormField, 'SSH host'), 'new.example.com');
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
@@ -249,7 +306,10 @@ void main() {
 
       expect(preferences.servers, [
         const Server(
-            name: 'New server', remote: 'kmyserver', sshHost: 'new.example.com')
+            name: 'New server',
+            remote: 'kmyserver',
+            sshHost: 'new.example.com',
+            baseUrl: 'https://new.example.com')
       ]);
     });
   });
@@ -258,8 +318,8 @@ void main() {
     const site = NewSite(
       server: _vm,
       name: 'shop',
-      domain: 'shop.localhost',
-      url: 'https://shop.localhost:8443',
+      domain: 'shop',
+      url: 'https://shop.vm.localhost:8443',
       template: 'symfony-starter',
       parentDir: '/home/me/repos/',
       github: true,
@@ -280,7 +340,7 @@ void main() {
       expect(failed, isNull);
       expect(steps, CreateStep.values);
       expect(runs, [
-        'ssh -p 2222 root@localhost /usr/local/sbin/site-add shop --domain shop.localhost --template symfony-starter',
+        'ssh -p 2222 root@localhost /usr/local/sbin/site-add shop --domain shop.vm.localhost --template symfony-starter',
         'git clone -o vm ssh://shop@localhost:2222/srv/sites/shop/repo.git /home/me/repos/shop',
         'gh repo create shop --private --source /home/me/repos/shop --remote origin --push',
       ]);
@@ -344,12 +404,15 @@ void main() {
       expect(runs, ['ssh', 'git']);
     });
 
-    test('checks name, domain and template', () {
+    test('checks name, subdomain and template', () {
       expect(NewSite.nameError('shop-2'), isNull);
       expect(NewSite.nameError('Shop'), isNotNull);
       expect(NewSite.nameError('s'), isNotNull);
+      expect(NewSite.subdomainError('shop'), isNull);
+      expect(NewSite.subdomainError('shop-2'), isNull);
+      expect(NewSite.subdomainError('Shop'), isNotNull);
+      expect(NewSite.subdomainError('my shop'), isNotNull);
       expect(NewSite.domainError('shop.example.com'), isNull);
-      expect(NewSite.domainError('shop'), isNotNull);
       expect(NewSite.templateError('symfony-starter'), isNull);
       expect(NewSite.templateError('https://github.com/symfony/demo.git#main'),
           isNull);
@@ -392,11 +455,17 @@ void main() {
       expect(find.text('New site from a template'), findsOneWidget);
 
       await tester.enterText(
-          find.widgetWithText(TextFormField, 'Name'), 'shop');
+          find.widgetWithText(TextFormField, 'Site name'), 'shop');
       await tester.enterText(
-          find.widgetWithText(TextFormField, 'Domain'), 'shop.localhost');
-      // The address follows the domain, with the server's port for the sites.
-      expect(find.text('https://shop.localhost:8443'), findsOneWidget);
+          find.widgetWithText(TextFormField, 'Display name'), 'Shop');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Subdomain'), 'shop');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'GitHub repository'),
+          'https://github.com/elkuku/shop');
+      // The address follows the subdomain, with the server's base URL and port.
+      expect(find.textContaining('https://shop.vm.localhost:8443'),
+          findsOneWidget);
       await tester.tap(find.text('Create a GitHub repository'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
@@ -407,8 +476,12 @@ void main() {
       await tester.tap(find.text('Add to the list'));
       await tester.pumpAndSettle();
 
-      expect(sites.single.mainTarget.url, 'https://shop.localhost:8443');
+      expect(sites.single.name, 'Shop');
+      expect(sites.single.githubRepo, 'https://github.com/elkuku/shop');
+      expect(sites.single.mainTarget.subdomain, 'shop');
       expect(sites.single.mainTarget.server, 'Test VM');
+      expect(sites.single.mainTarget.urlFor(_vm),
+          'https://shop.vm.localhost:8443');
       expect(sites.single.repoPath, endsWith('/repos/shop'));
     });
 
@@ -444,15 +517,23 @@ void main() {
       await tester.tap(find.text('New on KMyServer'));
       await tester.pumpAndSettle();
       await tester.enterText(
-          find.widgetWithText(TextFormField, 'Name'), 'shop');
+          find.widgetWithText(TextFormField, 'Site name'), 'shop');
       await tester.enterText(
-          find.widgetWithText(TextFormField, 'Domain'), 'shop.localhost');
+          find.widgetWithText(TextFormField, 'Display name'), 'Shop');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Subdomain'), 'shop');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'GitHub repository'),
+          'https://github.com/elkuku/shop');
+      expect(find.textContaining('https://shop.vm.localhost:8443'),
+          findsOneWidget);
       await tester.tap(find.text('Private repository'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
 
-      expect(runs.last, startsWith('gh repo create shop --public --source '));
+      expect(runs.last,
+          startsWith('gh repo create elkuku/shop --public --source '));
       expect(runs.last, endsWith('/repos/shop --remote origin --push'));
       expect(runs.last, isNot(contains('--private')));
     });

@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kuku_project_checker/main.dart';
 import 'package:kuku_project_checker/support/app_services.dart';
 import 'package:kuku_project_checker/support/local_versions.dart';
-import 'package:kuku_project_checker/support/preferences.dart';
 import 'package:kuku_project_checker/support/repo_status.dart';
+import 'package:kuku_project_checker/support/server.dart';
 import 'package:kuku_project_checker/support/settings.dart';
 import 'package:kuku_project_checker/support/site.dart';
 import 'package:kuku_project_checker/support/site_info.dart';
@@ -18,17 +18,24 @@ class _OneSite extends Settings {
   @override
   Future<List<Site>> readSettings() async => [
         legacySite(
-            name: 'Shop', url: 'https://shop.example.com', repoPath: '/repo')
+          name: 'Shop',
+          url: 'https://shop.example.com',
+          repoPath: '/repo',
+          server: 'Plesk',
+        )
       ];
 }
 
-class _Light extends Preferences {
-  @override
-  Future<ThemeMode> readThemeMode() async => ThemeMode.light;
-
-  @override
-  Future<void> writeThemeMode(ThemeMode mode) async {}
-}
+/// The active server is what enables a remote comparison at all.
+TestPreferences _preferences({bool serverMode = true}) => TestPreferences(
+      servers: serverMode
+          ? [
+              const Server(
+                  name: 'Plesk', remote: 'elkuku.dev', baseUrl: 'https://example.com')
+            ]
+          : const [],
+      active: serverMode ? 'Plesk' : '',
+    );
 
 const _clean = RepoStatus(
     branch: 'master',
@@ -229,18 +236,23 @@ services:
   });
 
   group('version badges', () {
-    Future<void> showSite(
+    /// Returns the addresses the app asked for: none in local-only mode.
+    Future<List<String>> showSite(
         WidgetTester tester, SystemInfo info, LocalVersions? local,
-        {double width = 800}) async {
+        {double width = 800, bool serverMode = true}) async {
       tester.view.physicalSize = Size(width, 700);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
+      final fetched = <String>[];
       await tester.pumpWidget(MyApp(
-        preferences: _Light(),
+        preferences: _preferences(serverMode: serverMode),
         services: AppServices(
           settings: _OneSite(),
-          fetchInfo: (_) async => info,
+          fetchInfo: (url) async {
+            fetched.add(url);
+            return info;
+          },
           checkRepo: (_, __) async => _clean,
           readLocal: (_) async => local ?? const LocalVersions(),
           openInTargets: const [],
@@ -248,6 +260,7 @@ services:
         ),
       ));
       await tester.pumpAndSettle();
+      return fetched;
     }
 
     String tooltipOf(WidgetTester tester, String text) => tester
@@ -256,7 +269,7 @@ services:
         .message!;
 
     testWidgets('show the database and the last deploy', (tester) async {
-      await showSite(
+      final fetched = await showSite(
         tester,
         SystemInfo(
           sfVersion: '8.1.11',
@@ -275,6 +288,8 @@ services:
       );
       await expandRow(tester, 'Shop');
 
+      expect(fetched, ['https://shop.example.com']);
+      expect(find.text('Compared with Plesk'), findsOneWidget);
       expect(find.text('PHP 8.5.12'), findsOneWidget);
       expect(find.text('Symfony 8.1.11'), findsOneWidget);
       expect(find.text('MariaDB 12.3.4'), findsOneWidget);
@@ -289,7 +304,7 @@ services:
 
     testWidgets('mark versions that differ from the local project',
         (tester) async {
-      await showSite(
+      final fetched = await showSite(
         tester,
         const SystemInfo(
           sfVersion: '8.1.10',
@@ -306,6 +321,7 @@ services:
       );
       await expandRow(tester, 'Shop');
 
+      expect(fetched, ['https://shop.example.com']);
       // Symfony and the database differ; PHP only in the patch version.
       expect(find.byIcon(Icons.compare_arrows), findsNWidgets(2));
       expect(tooltipOf(tester, 'Symfony 8.1.10'),
@@ -354,6 +370,33 @@ services:
       expect(find.byIcon(Icons.storage), findsNothing);
       expect(find.byIcon(Icons.rocket_launch_outlined), findsNothing);
       expect(find.byIcon(Icons.compare_arrows), findsNothing);
+    });
+
+    testWidgets('never fetch a site without an active server', (tester) async {
+      final fetched = await showSite(
+        tester,
+        const SystemInfo(sfVersion: '8.1.11', phpVersion: '8.5.12'),
+        const LocalVersions(
+            symfony: '8.1.11',
+            php: '8.5.13',
+            dbPlatform: 'mariadb',
+            dbVersion: '12.3'),
+        serverMode: false,
+      );
+      await expandRow(tester, 'Shop');
+
+      expect(fetched, isEmpty,
+          reason: 'No server is selected, so there is nothing to compare');
+      expect(find.text('Local versions'), findsOneWidget);
+      expect(find.text('PHP 8.5.13'), findsOneWidget);
+      expect(find.text('Symfony 8.1.11'), findsOneWidget);
+      expect(find.text('MariaDB 12.3'), findsOneWidget);
+      expect(tooltipOf(tester, 'PHP 8.5.13'), 'PHP 8.5.13 locally');
+      // None of the remote badges or comparisons are shown.
+      expect(find.text('PHP 8.5.12'), findsNothing);
+      expect(find.textContaining('Compared with'), findsNothing);
+      expect(find.byIcon(Icons.compare_arrows), findsNothing);
+      expect(find.byIcon(Icons.rocket_launch_outlined), findsNothing);
     });
   });
 }

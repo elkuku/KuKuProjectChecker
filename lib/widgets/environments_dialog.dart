@@ -102,6 +102,10 @@ class _EnvironmentEditorState extends State<EnvironmentEditor> {
     widget.onChanged(List.unmodifiable(targets));
   }
 
+  Server? _server(String name) => widget.servers
+      .where((candidate) => candidate.name == name)
+      .firstOrNull;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -109,9 +113,8 @@ class _EnvironmentEditorState extends State<EnvironmentEditor> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(targets.isEmpty
-            ? 'Add the address of this project. You can add more environments later.'
-            : 'Each environment has its own address and deploy remote. A server with a '
-                'domain suffix suggests a domain for new sites.'),
+            ? 'Add the first environment of this project. You can add more later.'
+            : 'Each environment adds a subdomain to its server and has its own deploy remote.'),
         const SizedBox(height: 12),
         if (targets.isEmpty)
           const Padding(
@@ -127,7 +130,7 @@ class _EnvironmentEditorState extends State<EnvironmentEditor> {
             title: Text(target.name),
             subtitle: Text(
               '${target.server.isEmpty ? 'no server' : target.server} · '
-              '${target.url}'
+              '${target.urlFor(_server(target.server))}'
               '${target.deployRemote.isEmpty ? '' : ' · remote ${target.deployRemote}'}',
               style: monoTextStyle.copyWith(fontSize: 11),
             ),
@@ -176,13 +179,18 @@ class _TargetFormState extends State<_TargetForm> {
   final form = GlobalKey<FormState>();
   late final name = TextEditingController(text: widget.target?.name);
   late final server = TextEditingController(text: widget.target?.server ?? '');
-  late final url = TextEditingController(text: widget.target?.url);
+  // An old environment has a full URL; suggest its first label as the subdomain.
+  late final subdomain = TextEditingController(text: widget.target == null
+      ? ''
+      : widget.target!.subdomain.isNotEmpty
+          ? widget.target!.subdomain
+          : widget.target!.domain.split('.').first);
   late final deployRemote =
       TextEditingController(text: widget.target?.deployRemote ?? '');
 
   @override
   void dispose() {
-    for (final controller in [name, server, url, deployRemote]) {
+    for (final controller in [name, server, subdomain, deployRemote]) {
       controller.dispose();
     }
     super.dispose();
@@ -200,7 +208,7 @@ class _TargetFormState extends State<_TargetForm> {
     Navigator.of(context).pop(SiteTarget(
       name: name.text.trim(),
       server: server.text.trim(),
-      url: url.text.trim(),
+      subdomain: subdomain.text.trim(),
       deployRemote: deployRemote.text.trim(),
     ));
   }
@@ -249,25 +257,26 @@ class _TargetFormState extends State<_TargetForm> {
                 ],
                 onChanged: (value) => setState(() => server.text = value ?? ''),
               ),
-              if (chosen != null && chosen.domainSuffix.isNotEmpty)
+              if (chosen != null && !chosen.hasUrl)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'New sites on ${chosen.name}: <site>.${chosen.domainSuffix}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                  child: Text(
+                    'Set a base URL for ${chosen.name} in Servers… first.',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
                 ),
               const SizedBox(height: 10),
               TextFormField(
-                controller: url,
-                decoration: const InputDecoration(
-                  labelText: 'Address',
-                  hintText: 'https://shop.example.com',
+                controller: subdomain,
+                decoration: InputDecoration(
+                  labelText: 'Subdomain',
+                  hintText: 'shop',
+                  helperText: chosen != null && chosen.hasUrl
+                      ? 'Address: ${chosen.siteUrl(subdomain.text.trim().isEmpty ? 'shop' : subdomain.text.trim())}'
+                      : 'The label added to the server’s base URL',
                 ),
-                validator: (text) => SiteTarget.urlError(text ?? ''),
+                validator: (text) => SiteTarget.subdomainError(text ?? ''),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 10),
               TextFormField(

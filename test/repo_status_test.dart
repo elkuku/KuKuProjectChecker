@@ -192,27 +192,93 @@ void main() {
     expect(RepoStatus.expandHome('/abs/path'), '/abs/path');
   });
 
-  test('a site is called by its name, or else by its host', () {
-    final named = Site.fromJson(
-        {'name': 'Shop', 'url': 'https://shop.example.com', 'repoPath': ''});
+  test('a complete site is called by its name, an old one by its host', () {
+    final named = Site.fromJson({
+      'name': 'Shop',
+      'url': 'https://shop.example.com',
+      'repoPath': '/repo',
+      'githubRepo': 'https://github.com/elkuku/shop',
+    });
 
     expect(named.displayName, 'Shop');
     expect(named.toJson()['name'], 'Shop');
-    expect(legacySite(url: 'https://shop.example.com/').displayName,
-        'shop.example.com');
+    expect(named.isComplete, isTrue);
+
+    final old = legacySite(url: 'https://shop.example.com/', incomplete: true);
+    expect(old.displayName, 'shop.example.com');
+    expect(old.isComplete, isFalse);
+  });
+
+  test('requires the identity fields before a site is complete', () {
+    expect(Site.nameError('  '), 'Enter a display name');
+    expect(Site.nameError(' Shop '), isNull);
+    expect(Site.repoPathError(''), 'Enter the local repository folder');
+    expect(Site.repoPathError('~/repos/shop'), isNull);
+    expect(Site.githubRepoError(''), 'Enter the GitHub repository URL');
+    expect(Site.githubRepoError('https://github.com/elkuku'),
+        'Use https://github.com/owner/repo');
+    expect(Site.githubRepoError('https://github.com/elkuku/shop'), isNull);
+
+    expect(SiteTarget.subdomainError(''), 'Enter the subdomain');
+    expect(SiteTarget.subdomainError('Shop'),
+        'Use lowercase letters, digits and dashes');
+    expect(SiteTarget.subdomainError('shop-1'), isNull);
+
+    expect(legacySite(url: 'https://shop.example.com').isComplete, isTrue);
+    expect(Site(
+      name: 'Shop',
+      repoPath: '/repo',
+      githubRepo: '',
+      targets: [SiteTarget(name: 'shop', url: 'https://shop.example.com')],
+    ).isComplete, isFalse);
+    expect(Site(
+      name: 'Shop',
+      repoPath: '/repo',
+      githubRepo: 'https://github.com/elkuku/shop',
+      targets: const [],
+    ).isComplete, isFalse);
+  });
+
+  test('names missing fields and derives labels for the suggestions', () {
+    final old = legacySite(url: 'https://shop.example.com/', incomplete: true);
+
+    expect(old.missingRequiredFields,
+        ['display name', 'local repository', 'GitHub repository']);
+    expect(old.suggestedName, 'Shop');
+    expect(old.suggestedRepoPath, '~/repos/shop');
+    expect(old.suggestedGitHubLabel, 'shop');
+
+    final withRepo = Site(
+      repoPath: '/srv/blog',
+      targets: const [
+        SiteTarget(name: 'blog.example.com', url: 'https://blog.example.com')
+      ],
+    );
+    expect(withRepo.missingRequiredFields,
+        ['display name', 'GitHub repository']);
+    expect(withRepo.suggestedGitHubLabel, 'blog');
   });
 
   test('reads the old and the new settings format', () {
     final old = Site.fromJson('https://a.example');
-    final current =
-        Site.fromJson({'url': 'https://b.example', 'repoPath': '~/repos/b'});
+    final current = Site.fromJson({
+      'name': 'Blog',
+      'repoPath': '~/repos/b',
+      'githubRepo': 'https://github.com/elkuku/b',
+      'targets': [
+        {'name': 'b.example', 'url': 'https://b.example'}
+      ],
+    });
 
     expect(old.mainTarget.url, 'https://a.example');
     expect(old.repoPath, '');
+    expect(old.isComplete, isFalse);
     expect(current.repoPath, '~/repos/b');
+    expect(current.isComplete, isTrue);
     expect(current.toJson(), {
-      'name': '',
+      'name': 'Blog',
       'repoPath': '~/repos/b',
+      'githubRepo': 'https://github.com/elkuku/b',
       'targets': [
         {'name': 'b.example', 'server': '', 'url': 'https://b.example'}
       ]
@@ -228,6 +294,7 @@ void main() {
     });
 
     expect(site.mainTarget.deployRemote, 'production');
+    expect(site.isComplete, isFalse, reason: 'The old record has no identity');
     expect(site.toJson(), isNot(contains('deployRemote')));
     expect(Site.fromJson(site.toJson()).mainTarget.deployRemote, 'production');
     expect(

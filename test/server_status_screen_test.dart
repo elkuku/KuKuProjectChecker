@@ -23,8 +23,7 @@ const vm = Server(
     remote: 'vm',
     sshHost: 'localhost',
     sshPort: 2222,
-    sitePort: 8443,
-    domainSuffix: 'example.com');
+    baseUrl: 'https://example.com');
 
 Map<String, dynamic> _json({bool healthy = false}) => {
       'schema': 1,
